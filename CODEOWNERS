@@ -1,0 +1,23 @@
+# BITTU / ZEDPY Code Owners
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: all files owned by the project maintainer
+* @hcmad
+
+# Core engine (agent, LLM, config)
+zedpy/zedpy/agent.py @hcmad
+zedpy/zedpy/config.py @hcmad
+zedpy/zedpy/llm/ @hcmad
+
+# Core modules (effort, swarm, memory, dream, checkpoint)
+zedpy/zedpy/core/ @hcmad
+
+# Tool registry and implementations
+zedpy/zedpy/tools/ @hcmad
+
+# TUI (terminal UI)
+zedpy/zedpy/tui/ @hcmad
+
+# Enterprise governance files
+SECURITY.md @hcmad
+CODEOWNERS @hcmad
