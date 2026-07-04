@@ -111,6 +111,19 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         base_url=NVIDIA_BASE_URL,
         max_tokens=16384,  # Step-3.7-Flash official limit
     ),
+    # === Dream Mode Optimized (fast response) ===
+    "dream-fast": ModelProfile(
+        name="dream-fast", model="mimo-v2.5-free",
+        base_url="https://opencode.ai/zen/v1/chat/completions",
+        max_tokens=500_000,
+        temperature=0.1,  # Lower = more focused
+    ),
+    "dream-pro": ModelProfile(
+        name="dream-pro", model="deepseek-v4-flash-free",
+        base_url="https://opencode.ai/zen/v1/chat/completions",
+        max_tokens=500_000,
+        temperature=0.05,
+    ),
 }
 
 

@@ -343,6 +343,120 @@ def _dream(app, arg: str) -> str:
             "Ab apna goal type karo (ya: /dream <goal text>).")
 
 
+def _dream_fast(app, arg: str) -> str:
+    """Dream Mode with auto fast model selection for quick responses."""
+    from .config import MODEL_PROFILES
+    from .core.dream import get_dream_fast_model
+    
+    # Set dream effort
+    app.agent.set_effort("dream"); app.cfg.effort = "dream"
+    
+    # Auto-select fastest model using apply_profile
+    fast_model = get_dream_fast_model()
+    if fast_model in MODEL_PROFILES:
+        app.cfg.apply_profile(fast_model)
+    
+    # Rebuild agent with new settings
+    if hasattr(app, 'agent'):
+        from .agent import Agent
+        app.agent = Agent(app.cfg)
+    
+    app.refresh_status()
+    
+    if arg.strip():
+        app.log_user(f"/dream-fast {arg.strip()}")
+        app._run_agent_async(arg.strip())
+        return ""
+    
+    return (f"🚀 DREAM MODE ULTRA PRO — Fast Model Active!\n"
+            f"Model: {app.cfg.model}\n"
+            f"Max Tokens: {app.cfg.max_tokens}\n"
+            f"Effort: 1000× Dream Mode\n\n"
+            f"14 parallel analysis engines ready:\n"
+            f"  - Deep AST Analysis\n"
+            f"  - Dependency Graph\n"
+            f"  - Security Analysis\n"
+            f"  - Performance Analysis\n"
+            f"  - Code Quality Baseline\n"
+            f"  - Architecture Brain\n"
+            f"  - Risk Heatmap\n"
+            f"  - Change Impact\n"
+            f"  - Dead Code Detection\n"
+            f"  - Type Hints Analysis\n"
+            f"  - Code Smells\n"
+            f"  - API Surface\n"
+            f"  - Test Coverage\n"
+            f"  - Documentation\n\n"
+            f"Type your goal to start DREAM MODE ULTRA PRO!")
+
+
+def _dream_ultra(app, arg: str) -> str:
+    """Dream Mode ULTRA PRO with maximum analysis and verification."""
+    from .config import MODEL_PROFILES
+    from .core.dream import get_dream_fast_model
+    
+    # Set dream effort with maximum settings
+    app.agent.set_effort("dream"); app.cfg.effort = "dream"
+    
+    # Use best available model using apply_profile
+    fast_model = get_dream_fast_model()
+    if fast_model in MODEL_PROFILES:
+        app.cfg.apply_profile(fast_model)
+    
+    # Enable all advanced features
+    app.cfg.plan_mode = True
+    app.cfg.auto_test = True
+    
+    # Rebuild agent with new settings
+    if hasattr(app, 'agent'):
+        from .agent import Agent
+        app.agent = Agent(app.cfg)
+        app.agent.rebuild_system()
+    
+    app.refresh_status()
+    
+    if arg.strip():
+        app.log_user(f"/dream-ultra {arg.strip()}")
+        app._run_agent_async(arg.strip())
+        return ""
+    
+    return (f"🔥 DREAM MODE ULTRA PRO — Maximum Power!\n"
+            f"Model: {app.cfg.model}\n"
+            f"Max Tokens: {app.cfg.max_tokens}\n"
+            f"Effort: 1000× Dream Mode\n"
+            f"Plan Mode: ON\n"
+            f"Auto-Test: ON\n\n"
+            f"14 parallel analysis engines + 12 swarm agents:\n"
+            f"  - Deep AST Analysis (complexity metrics)\n"
+            f"  - Dependency Graph (circular detection)\n"
+            f"  - Security Analysis (vulnerability scan)\n"
+            f"  - Performance Analysis (inefficiency detection)\n"
+            f"  - Code Quality Baseline (maintainability index)\n"
+            f"  - Architecture Brain (coupling analysis)\n"
+            f"  - Risk Heatmap (quantified risk scores)\n"
+            f"  - Change Impact (blast radius)\n"
+            f"  - Dead Code Detection\n"
+            f"  - Type Hints Analysis\n"
+            f"  - Code Smells Detection\n"
+            f"  - API Surface Analysis\n"
+            f"  - Test Coverage Analysis\n"
+            f"  - Documentation Analysis\n\n"
+            f"12 swarm agents for deep research:\n"
+            f"  - Project structure analysis\n"
+            f"  - Milestone breakdown\n"
+            f"  - Risk identification\n"
+            f"  - Dependency mapping\n"
+            f"  - Conflict detection\n"
+            f"  - Implementation optimization\n"
+            f"  - Complexity estimation\n"
+            f"  - Rollback strategy\n"
+            f"  - Pattern review\n"
+            f"  - Security validation\n"
+            f"  - Verification planning\n"
+            f"  - Success criteria\n\n"
+            f"Type your goal to start DREAM MODE ULTRA PRO!")
+
+
 # --- Registry ---------------------------------------------------------------
 COMMANDS: list[SlashCommand] = [
     SlashCommand("/help",   "Show all commands",                     _help),
@@ -386,6 +500,8 @@ COMMANDS: list[SlashCommand] = [
     SlashCommand("/ultracombomax",  "Enterprise-level heavy work",   _ultracombomax),
     SlashCommand("/goal",           "Autonomous end-to-end goal",    _goal),
     SlashCommand("/dream",          "1000× — orchestrate EVERYTHING", _dream),
+    SlashCommand("/dream-fast",     "Dream Mode + auto fast model",  _dream_fast),
+    SlashCommand("/dream-ultra",    "Dream Mode ULTRA PRO",          _dream_ultra),
     SlashCommand("/quit",           "Exit BITTU",                    _quit),
 ]
 

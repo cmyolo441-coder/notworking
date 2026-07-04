@@ -108,17 +108,22 @@ EFFORT_GOAL_EXTRA = (
 EFFORT_DREAM_DESC = "1000× — orchestrates EVERY tool, feature & command. Max autonomy."
 EFFORT_DREAM_EXTRA = (
     "[DREAM MODE — 1000× MAXIMUM AUTONOMY] The most advanced mode.\n"
-    "• Dream control plane ran: architecture map, metrics, secrets, deps, "
-    "TODOs, swarm research, risk heatmap, full project checkpoint.\n"
+    "• Dream control plane ran: deep AST analysis, dependency graph, architecture "
+    "map, risk heatmap, code quality baseline, metrics, secrets, deps, TODOs, "
+    "swarm research (10 parallel agents), risk heatmap, full project checkpoint.\n"
     "• All tools available: read/write/edit/shell/git/analyze/lint/deps/"
     "secret_scan/http/data/regex/tree/scaffold/web_search/memory.\n"
     "• Auto-accept ON: execute without asking.\n"
-    "• Multi-phase: PLAN (milestones+risks+rollback) → IMPLEMENT (surgical) → "
-    "VERIFY (lint+secret_scan+tests each change, fix until green) → "
-    "REMEMBER (key decisions) → EVIDENCE (final summary).\n"
+    "• Multi-phase: ANALYZE (deep AST + deps + baseline) → PLAN (milestones+risks+"
+    "rollback) → IMPLEMENT (surgical edits, max 3 files per step) → "
+    "VERIFY (lint+secret_scan+tests EACH change, compare before/after metrics) → "
+    "SELF-HEAL (retry up to 50 times) → REMEMBER (key decisions) → "
+    "EVIDENCE (hash-chained audit trail).\n"
     "• Adaptive: adjust depth based on task complexity signals.\n"
-    "• Self-healing: auto-retry failures up to 30 times.\n"
+    "• Self-healing: auto-retry failures up to 50 times.\n"
     "• Architecture analysis: understand module boundaries and coupling.\n"
+    "• Dependency analysis: detect circular deps, orphan modules.\n"
+    "• Code quality: baseline metrics, regression detection.\n"
     "• Risk assessment: identify and mitigate risks proactively.\n"
     "Enterprise-grade, production-final work. No shortcuts."
 )
@@ -186,3 +191,43 @@ SPECIALISTS = {
 # 7. DREAM MODE — control plane header
 # =========================================================================
 DREAM_CONTROL_HEADER = "[DREAM CONTROL PLANE — ULTIMATE] Goal: "
+
+DREAM_ULTRA_PRO_HEADER = """[DREAM MODE ULTRA PRO — MAXIMUM AUTONOMY]
+=== ANALYSIS ENGINES (14 parallel) ===
+1. Deep AST Analysis — cyclomatic complexity, cognitive complexity, maintainability index
+2. Dependency Graph — full DAG with circular detection, orphan detection
+3. Security Analysis — hardcoded secrets, dangerous functions, SQL injection, path traversal
+4. Performance Analysis — N+1 queries, string concatenation in loops, global state
+5. Code Quality Baseline — maintainability index, technical debt estimation
+6. Architecture Brain — module boundaries, coupling metrics, cohesion analysis
+7. Risk Heatmap — quantified risk per file with confidence intervals
+8. Change Impact — blast radius with propagation depth estimation
+9. Dead Code Detection — unused imports, unreachable functions
+10. Type Hints Analysis — type coverage, missing annotations
+11. Code Smells — long parameters, god classes, feature envy
+12. API Surface — public API analysis, decorator usage
+13. Test Coverage — test ratio, missing tests
+14. Documentation — docstring coverage, quality analysis
+
+=== SWARM AGENTS (12 parallel) ===
+1. Project Structure Analysis
+2. Milestone Breakdown
+3. Risk Identification
+4. Dependency Mapping
+5. Conflict Detection
+6. Implementation Optimization
+7. Complexity Estimation
+8. Rollback Strategy
+9. Pattern Review
+10. Security Validation
+11. Verification Planning
+12. Success Criteria
+
+=== VERIFICATION (100 retries) ===
+- Before/after metrics comparison
+- Regression detection
+- Hash-chained evidence pack
+- Real-time monitoring
+
+=== DIRECTIVE ===
+Goal: """

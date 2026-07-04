@@ -267,6 +267,10 @@ class BittuApp(App):
             t.append(f"working… {elapsed:4.1f}s  ", style="#e8a13a bold")
         t.append(f"{BRAND} ", style="#b3b3b3")
         t.append(f"[{eff_label}]", style=eff_style)
+        # Show model name in Dream Mode
+        if eff and eff.name == "dream":
+            model_short = self.cfg.model.split("/")[-1] if "/" in self.cfg.model else self.cfg.model
+            t.append(f" ({model_short})", style="#00ff00 bold")
         t.append(f" {tok_str} tokens", style="#808080")
         t.append("        ")
         t.append("enter ", style="#b3b3b3")
@@ -488,7 +492,15 @@ class BittuApp(App):
         """Show all available models in a navigable list."""
         from ..config import MODEL_PROFILES
         
-        self._model_selector_items = list(MODEL_PROFILES.items())
+        # Sort models: dream models first when dream mode is active
+        items = list(MODEL_PROFILES.items())
+        if hasattr(self, 'agent') and self.agent.effort and self.agent.effort.name == "dream":
+            # Put dream models at the top
+            dream_items = [(n, p) for n, p in items if 'dream' in n.lower()]
+            other_items = [(n, p) for n, p in items if 'dream' not in n.lower()]
+            items = dream_items + other_items
+        
+        self._model_selector_items = items
         self._model_selector_index = 0
         
         # Find current model in list
@@ -507,6 +519,10 @@ class BittuApp(App):
         t.append("═══ SELECT MODEL ═══\n", style="#e8a13a bold")
         t.append("(Ctrl+PgUp/PgDn navigate · Ctrl+Enter select · Esc cancel)\n\n", style="#595959")
         
+        # Show dream mode indicator if active
+        if hasattr(self, 'agent') and self.agent.effort and self.agent.effort.name == "dream":
+            t.append("  🚀 DREAM MODE ACTIVE — Dream models shown first\n\n", style="#00ff00 bold")
+        
         for i, (name, profile) in enumerate(self._model_selector_items):
             selected = (i == self._model_selector_index)
             current = (profile.model == self.cfg.model)
@@ -522,12 +538,15 @@ class BittuApp(App):
                 provider = "OpenCode"
                 provider_style = "#00d4aa"  # Teal
             
+            # Dream mode indicator
+            dream_indicator = " ⭐" if 'dream' in name.lower() else ""
+            
             if selected:
                 t.append("  ▶ ", style="#e8a13a bold")
                 t.append(f"{name:<18}", style="black on #e8a13a bold")
                 t.append(f" ", style="")
                 t.append(f"{provider:<10}", style=provider_style)
-                t.append(f" {profile.model}", style="white bold")
+                t.append(f" {profile.model}{dream_indicator}", style="white bold")
                 if current:
                     t.append(" ✓", style="#76b900 bold")
                 t.append("\n", style="")

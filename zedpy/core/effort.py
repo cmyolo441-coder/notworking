@@ -171,7 +171,7 @@ _DREAM = Effort(
     max_steps=600, max_tokens=1_000_000, temperature=0.02,
     description=EFFORT_DREAM_DESC,
     **_base_flags(plan=True, verify=True, research=True, diagnostic=True,
-                  retries=30, parallel=True, swarm=True, swarmsize=10,
+                  retries=100, parallel=True, swarm=True, swarmsize=12,
                   quality=True, security=True, metrics=True,
                   preflight=True, gates=True, checkpoint=True, ctx=25),
     **_autonomous_flags(goal=True, dream=True, accept=True, evidence=True,
