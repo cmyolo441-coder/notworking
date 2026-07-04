@@ -627,9 +627,9 @@ def _code_quality_baseline(workdir: str) -> str:
 
         lines = src.split("\n")
         metrics["total_lines"] += len(lines)
-        metrics["blank_lines"] += sum(1 for l in lines if not l.strip())
-        metrics["comment_lines"] += sum(1 for l in lines if l.strip().startswith("#"))
-        metrics["code_lines"] += sum(1 for l in lines if l.strip() and not l.strip().startswith("#"))
+        metrics["blank_lines"] += sum(1 for line in lines if not line.strip())
+        metrics["comment_lines"] += sum(1 for line in lines if line.strip().startswith("#"))
+        metrics["code_lines"] += sum(1 for line in lines if line.strip() and not line.strip().startswith("#"))
 
         analyzer = ASTAnalyzer()
         analyzer.visit(tree)
@@ -660,7 +660,7 @@ def _code_quality_baseline(workdir: str) -> str:
 
     # Estimate technical debt (hours to fix issues)
     high_cc_count = sum(1 for cc in all_ccs if cc > 10)
-    long_func_count = sum(1 for l in all_func_lens if l > 50)
+    long_func_count = sum(1 for ln in all_func_lens if ln > 50)
     metrics["technical_debt_hours"] = high_cc_count * 2 + long_func_count * 1
 
     # Quality rating

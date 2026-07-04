@@ -8,14 +8,15 @@
   #16 tree             — visualize project structure
 """
 from __future__ import annotations
+
 import difflib
 import json
 import re
 import urllib.request
 from pathlib import Path
 
-from .base import Tool, safe_path, walk_files
 from ..core.undo import MANAGER as UNDO
+from .base import Tool, safe_path
 
 # ShowDiff: max diff lines to display.
 _MAX_DIFF_LINES = 200
@@ -42,8 +43,8 @@ class ShowDiff(Tool):  # feature #2
         lines = list(diff)
         if not lines:
             return "No differences."
-        add = sum(1 for l in lines if l.startswith("+") and not l.startswith("+++"))
-        rem = sum(1 for l in lines if l.startswith("-") and not l.startswith("---"))
+        add = sum(1 for ln in lines if ln.startswith("+") and not ln.startswith("+++"))
+        rem = sum(1 for ln in lines if ln.startswith("-") and not ln.startswith("---"))
         return f"(+{add} -{rem})\n" + "\n".join(lines[:_MAX_DIFF_LINES])
 
 

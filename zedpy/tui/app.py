@@ -6,6 +6,7 @@ mode-labelled prompt box ("Plan / What are we building?"), a status line
 with the cwd (left) and version (right). Slash commands work like Claude Code.
 """
 from __future__ import annotations
+
 import os
 import threading
 import time
@@ -17,11 +18,11 @@ from textual.containers import Container, Vertical, VerticalScroll
 from textual.events import Paste
 from textual.widgets import Input, Static
 
-from ..config import Config
-from ..agent import Agent
-from ..llm import LLMError
 from .. import commands as cmds
+from ..agent import Agent
+from ..config import Config
 from ..core.session import Session
+from ..llm import LLMError
 from .constellation import constellation
 
 BRAND = "BITTU"
@@ -449,7 +450,7 @@ class BittuApp(App):
         t = Text()
         t.append("═══ COMMANDS ═══  ", style="#e8a13a bold")
         t.append("(↑/↓ PgUp/PgDn navigate · Enter/Tab select · Esc cancel)\n", style="#595959")
-        
+
         for i, c in enumerate(self._palette_matches):
             selected = (i == self._palette_index)
             if selected:
@@ -491,7 +492,7 @@ class BittuApp(App):
     def _show_model_selector(self) -> None:
         """Show all available models in a navigable list."""
         from ..config import MODEL_PROFILES
-        
+
         # Sort models: dream models first when dream mode is active
         items = list(MODEL_PROFILES.items())
         if hasattr(self, 'agent') and self.agent.effort and self.agent.effort.name == "dream":
@@ -499,16 +500,16 @@ class BittuApp(App):
             dream_items = [(n, p) for n, p in items if 'dream' in n.lower()]
             other_items = [(n, p) for n, p in items if 'dream' not in n.lower()]
             items = dream_items + other_items
-        
+
         self._model_selector_items = items
         self._model_selector_index = 0
-        
+
         # Find current model in list
         for i, (name, profile) in enumerate(self._model_selector_items):
             if profile.model == self.cfg.model:
                 self._model_selector_index = i
                 break
-        
+
         self._model_selector_active = True
         self._render_model_selector()
 
@@ -518,15 +519,15 @@ class BittuApp(App):
         t = Text()
         t.append("═══ SELECT MODEL ═══\n", style="#e8a13a bold")
         t.append("(Ctrl+PgUp/PgDn navigate · Ctrl+Enter select · Esc cancel)\n\n", style="#595959")
-        
+
         # Show dream mode indicator if active
         if hasattr(self, 'agent') and self.agent.effort and self.agent.effort.name == "dream":
             t.append("  🚀 DREAM MODE ACTIVE — Dream models shown first\n\n", style="#00ff00 bold")
-        
+
         for i, (name, profile) in enumerate(self._model_selector_items):
             selected = (i == self._model_selector_index)
             current = (profile.model == self.cfg.model)
-            
+
             # Provider indicator
             if "nvidia.com" in profile.base_url:
                 provider = "NVIDIA"
@@ -537,14 +538,14 @@ class BittuApp(App):
             else:
                 provider = "OpenCode"
                 provider_style = "#00d4aa"  # Teal
-            
+
             # Dream mode indicator
             dream_indicator = " ⭐" if 'dream' in name.lower() else ""
-            
+
             if selected:
                 t.append("  ▶ ", style="#e8a13a bold")
                 t.append(f"{name:<18}", style="black on #e8a13a bold")
-                t.append(f" ", style="")
+                t.append(" ", style="")
                 t.append(f"{provider:<10}", style=provider_style)
                 t.append(f" {profile.model}{dream_indicator}", style="white bold")
                 if current:
@@ -553,13 +554,13 @@ class BittuApp(App):
             else:
                 t.append("    ")
                 t.append(f"{name:<18}", style="#e8a13a")
-                t.append(f" ", style="")
+                t.append(" ", style="")
                 t.append(f"{provider:<10}", style=provider_style)
                 t.append(f" {profile.model}", style="#9e9e9e")
                 if current:
                     t.append(" ✓", style="#76b900")
                 t.append("\n", style="")
-        
+
         palette.update(t)
         palette.styles.display = "block"
 
@@ -624,22 +625,33 @@ class BittuApp(App):
         # Model selector navigation
         if self._model_selector_active:
             if event.key == "up":
-                self.action_model_selector_up(); event.stop(); event.prevent_default()
+                self.action_model_selector_up()
+                event.stop()
+                event.prevent_default()
             elif event.key == "down":
-                self.action_model_selector_down(); event.stop(); event.prevent_default()
+                self.action_model_selector_down()
+                event.stop()
+                event.prevent_default()
             elif event.key in ("enter", "ctrl+enter"):
-                self.action_model_selector_select(); event.stop(); event.prevent_default()
+                self.action_model_selector_select()
+                event.stop()
+                event.prevent_default()
             return
         # Slash palette navigation
         if not self._palette_matches:
             return
         if event.key == "up":
-            self.action_palette_up(); event.stop(); event.prevent_default()
+            self.action_palette_up()
+            event.stop()
+            event.prevent_default()
         elif event.key == "down":
-            self.action_palette_down(); event.stop(); event.prevent_default()
+            self.action_palette_down()
+            event.stop()
+            event.prevent_default()
         elif event.key == "tab":
             if self._accept_palette():
-                event.stop(); event.prevent_default()
+                event.stop()
+                event.prevent_default()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         # Safety: busy hone pe submit ignore karo (paste-triggered submit bhi).

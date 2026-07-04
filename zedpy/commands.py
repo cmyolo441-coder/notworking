@@ -305,22 +305,30 @@ def _effort(app, arg: str) -> str:
 
 
 def _max(app, arg: str) -> str:
-    r = app.agent.set_effort("max"); app.cfg.effort = "max"; app.refresh_status()
+    r = app.agent.set_effort("max")
+    app.cfg.effort = "max"
+    app.refresh_status()
     return r + "  — best work, deep thinking"
 
 
 def _ultra(app, arg: str) -> str:
-    r = app.agent.set_effort("ultra"); app.cfg.effort = "ultra"; app.refresh_status()
+    r = app.agent.set_effort("ultra")
+    app.cfg.effort = "ultra"
+    app.refresh_status()
     return r + "  — most complex work, ultra thinking"
 
 
 def _ultracombomax(app, arg: str) -> str:
-    r = app.agent.set_effort("ultracombomax"); app.cfg.effort = "ultracombomax"; app.refresh_status()
+    r = app.agent.set_effort("ultracombomax")
+    app.cfg.effort = "ultracombomax"
+    app.refresh_status()
     return r + "  — full enterprise-level heavy work"
 
 
 def _goal(app, arg: str) -> str:
-    app.agent.set_effort("goal"); app.cfg.effort = "goal"; app.refresh_status()
+    app.agent.set_effort("goal")
+    app.cfg.effort = "goal"
+    app.refresh_status()
     if arg.strip():
         # Directly launch the autonomous goal.
         app.log_user(f"/goal {arg.strip()}")
@@ -331,7 +339,9 @@ def _goal(app, arg: str) -> str:
 
 
 def _dream(app, arg: str) -> str:
-    app.agent.set_effort("dream"); app.cfg.effort = "dream"; app.refresh_status()
+    app.agent.set_effort("dream")
+    app.cfg.effort = "dream"
+    app.refresh_status()
     if arg.strip():
         app.log_user(f"/dream {arg.strip()}")
         app._run_agent_async(arg.strip())
@@ -347,7 +357,8 @@ def _dream_fast(app, arg: str) -> str:
     from .core.dream import get_dream_fast_model
 
     # Set dream effort
-    app.agent.set_effort("dream"); app.cfg.effort = "dream"
+    app.agent.set_effort("dream")
+    app.cfg.effort = "dream"
 
     # Auto-select fastest model using apply_profile
     fast_model = get_dream_fast_model()
@@ -394,7 +405,8 @@ def _dream_ultra(app, arg: str) -> str:
     from .core.dream import get_dream_fast_model
 
     # Set dream effort with maximum settings
-    app.agent.set_effort("dream"); app.cfg.effort = "dream"
+    app.agent.set_effort("dream")
+    app.cfg.effort = "dream"
 
     # Use best available model using apply_profile
     fast_model = get_dream_fast_model()
