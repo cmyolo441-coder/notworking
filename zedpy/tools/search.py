@@ -1,7 +1,9 @@
 """Search tools: grep (content) aur find_files (glob)."""
 from __future__ import annotations
+
 import fnmatch
 from pathlib import Path
+
 from .base import Tool, walk_files
 
 

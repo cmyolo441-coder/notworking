@@ -10,21 +10,23 @@ Features:
   - Self-healing: detect failures and auto-repair
 """
 from __future__ import annotations
+
 import json
 import threading
-import time
 
 from .config import Config
-from .llm import LLM, LLMError
-from .llm.streaming import stream_chat
-from .tools import REGISTRY, SCHEMAS
+from .core import effort as effort_engine
 from .core.index import CodeIndex
 from .core.memory import MEMORY
-from .core import effort as effort_engine
+from .llm import LLM
+from .llm.streaming import stream_chat
 from .systemprompts import (
-    MAIN_SYSTEM_PROMPT, GOAL_CONTRACT, PLAN_MODE_PROMPT, AUTO_TEST_PROMPT,
+    AUTO_TEST_PROMPT,
+    GOAL_CONTRACT,
+    MAIN_SYSTEM_PROMPT,
+    PLAN_MODE_PROMPT,
 )
-
+from .tools import REGISTRY, SCHEMAS
 
 # === INSTRUCTION REINFORCEMENT PROMPTS ===
 COMPLIANCE_REMINDER = (
@@ -44,6 +46,21 @@ POST_TOOL_REMINDER = (
     "If you see errors, fix them before continuing."
 )
 
+# === DREAM MODE — never-stop autonomous loop ===
+# The loop keeps going (auto-continuing) until a REAL completion check passes,
+# bounded so it can never run or cost forever:
+#   - DREAM_HARD_CAP        : absolute ceiling on loop steps in dream mode.
+#   - DREAM_CONTINUATION_CAP : max auto-continuations after the model stops.
+#   - stall detection        : stop if no measurable progress for N rounds.
+DREAM_HARD_CAP = 1000
+DREAM_CONTINUATION_CAP = 25
+DREAM_STALL_LIMIT = 3
+DREAM_CONTINUATION_PROMPT = (
+    "[DREAM — NOT DONE YET] The goal is not verifiably complete. Do NOT stop. "
+    "Keep working: fix what's failing, rewrite any fake/simulated code into real "
+    "code, and re-verify. Reason for continuing: "
+)
+
 
 class Agent:
     def __init__(self, cfg: Config):
@@ -54,6 +71,11 @@ class Agent:
         self.history: list[dict] = [{"role": "system", "content": self._system()}]
         self._auto_context_done = False
         self._debug_fails = 0
+        # Dream never-stop loop state.
+        self._dream_continuations = 0
+        self._dream_stall = 0
+        self._dream_last_state: tuple | None = None
+        self._dream_mtime_snapshot: tuple | None = None
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.cancel_event = threading.Event()
@@ -124,7 +146,7 @@ class Agent:
         Returns True if compliance injection was added."""
         content = msg.get("content") or ""
         tool_calls = msg.get("tool_calls") or []
-        
+
         # If no tools called but response contains action phrases, inject reminder
         if not tool_calls and content:
             action_phrases = [
@@ -229,6 +251,11 @@ class Agent:
         self._inject_context(user_input)
         self.cancel_event.clear()
         self._debug_fails = 0
+        # Reset dream never-stop loop state each turn.
+        self._dream_continuations = 0
+        self._dream_stall = 0
+        self._dream_last_state = None
+        self._dream_mtime_snapshot = None
 
         # Context compression check
         self._maybe_compress_context()
@@ -252,6 +279,10 @@ class Agent:
         # Max steps from effort level
         max_steps = max(self.cfg.max_steps,
                         getattr(self.effort, "max_steps", 80))
+        # Dream mode: raise the loop ceiling so the never-stop loop has room,
+        # while keeping the effort dataclass value (600) intact for callers.
+        if getattr(self.effort, "dream_mode", False):
+            max_steps = max(max_steps, DREAM_HARD_CAP)
 
         for step in range(max_steps):
             if self.cancel_event.is_set():
@@ -277,6 +308,17 @@ class Agent:
                 if self._check_tool_usage_compliance(msg):
                     continue  # Re-loop with compliance reminder injected
                 answer = msg.get("content") or "(no response)"
+                # DREAM MODE never-stop: don't finalize until the goal is
+                # verifiably complete (real check), bounded by cap + stall.
+                if (getattr(self.effort, "dream_mode", False)
+                        and not self.cancel_event.is_set()):
+                    done, reason = self._dream_completion_check()
+                    if (not done
+                            and self._dream_continuations < DREAM_CONTINUATION_CAP):
+                        self._dream_continuations += 1
+                        self._append_history("user",
+                                             DREAM_CONTINUATION_PROMPT + reason)
+                        continue
                 return self._finalize(answer)
 
             # Execute tool calls
@@ -360,6 +402,103 @@ class Agent:
             except Exception:
                 pass
         return answer
+
+    # --- dream never-stop completion check ---
+    def _workdir_mtime_state(self) -> tuple:
+        """Cheap fingerprint of the tree so we can detect 'nothing changed'."""
+        import os
+        wd = self.cfg.workdir
+        stamps: list[tuple] = []
+        for dirpath, dirnames, filenames in os.walk(wd):
+            dirnames[:] = [d for d in dirnames
+                           if not d.startswith(".") and d != "__pycache__"]
+            for f in filenames:
+                if not f.endswith(".py"):
+                    continue
+                fp = os.path.join(dirpath, f)
+                try:
+                    stamps.append((fp, os.path.getmtime(fp)))
+                except OSError:
+                    continue
+        return tuple(sorted(stamps))
+
+    def _dream_completion_check(self) -> tuple[bool, str]:
+        """Decide if the dream goal is verifiably done.
+
+        Real signals only: tests pass (if any), zero blocking fake/stub findings,
+        and no recent tool errors. Returns (done, reason_to_continue).
+
+        Guards against infinite loops:
+          - mtime cache: if the tree is unchanged since the last check, treat as
+            stalled (nothing new to verify) and stop.
+          - stall detection: if the measurable state is unchanged for
+            DREAM_STALL_LIMIT checks, stop even if not "done".
+        """
+        # 1. mtime cache — if nothing changed, there's nothing new to verify.
+        mtime_state = self._workdir_mtime_state()
+        if (self._dream_mtime_snapshot is not None
+                and mtime_state == self._dream_mtime_snapshot):
+            return True, "(no file changes since last check — stopping)"
+        self._dream_mtime_snapshot = mtime_state
+
+        # 2. Fake/simulated code — blocking findings must be zero.
+        blocking_fakes = self._count_blocking_fakes()
+
+        # 3. Recent tool errors.
+        error_count = sum(
+            1 for m in self.history[-8:]
+            if m.get("role") == "tool" and (m.get("content") or "").startswith("Error:")
+        )
+
+        # 4. Tests (if a test command exists).
+        tests_failing = self._tests_failing()
+
+        done = (blocking_fakes == 0) and (error_count == 0) and (not tests_failing)
+
+        # Stall detection: identical measurable state across checks → stop.
+        state = (blocking_fakes, tests_failing, error_count)
+        if state == self._dream_last_state:
+            self._dream_stall += 1
+        else:
+            self._dream_stall = 0
+            self._dream_last_state = state
+        if not done and self._dream_stall >= DREAM_STALL_LIMIT:
+            return True, "(no measurable progress — stopping to avoid a loop)"
+
+        if done:
+            return True, "(verified: no fake code, no errors, tests pass)"
+
+        reasons = []
+        if blocking_fakes:
+            reasons.append(f"{blocking_fakes} fake/stub finding(s) to rewrite")
+        if tests_failing:
+            reasons.append("tests are failing")
+        if error_count:
+            reasons.append(f"{error_count} recent tool error(s)")
+        return False, "; ".join(reasons) or "goal not verified yet"
+
+    def _count_blocking_fakes(self) -> int:
+        """Run the fake-code engine and parse its machine-readable count."""
+        try:
+            from .core.dream import _fake_code_detection
+            out = _fake_code_detection(self.cfg.workdir)
+        except Exception:
+            return 0
+        import re
+        m = re.search(r"Fake/stub findings:\s*(\d+)", out)
+        return int(m.group(1)) if m else 0
+
+    def _tests_failing(self) -> bool:
+        """True only if a test command exists AND it reports failures."""
+        cmd = self._detect_test_command()
+        if not cmd:
+            return False  # no tests → don't block completion
+        try:
+            out = REGISTRY["run_shell"].run(self.cfg.workdir, command=cmd,
+                                            timeout_seconds=90)
+        except Exception:
+            return False
+        return any(w in out.lower() for w in ("fail", "error", "traceback"))
 
     # --- effort preflight (before acting) ---
     def _effort_preflight(self, user_input: str) -> None:

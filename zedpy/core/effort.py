@@ -6,14 +6,21 @@ planning depth, verification rigor, research scope, debug retry budget, etc.
 NEW: Adaptive behavior adjusts parameters based on task complexity signals.
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
+
+from dataclasses import dataclass
+
 from ..systemprompts import (
+    EFFORT_DREAM_DESC,
+    EFFORT_DREAM_EXTRA,
+    EFFORT_GOAL_DESC,
+    EFFORT_GOAL_EXTRA,
+    EFFORT_MAX_DESC,
+    EFFORT_MAX_EXTRA,
     EFFORT_NORMAL_DESC,
-    EFFORT_MAX_DESC, EFFORT_MAX_EXTRA,
-    EFFORT_ULTRA_DESC, EFFORT_ULTRA_EXTRA,
-    EFFORT_ULTRACOMBOMAX_DESC, EFFORT_ULTRACOMBOMAX_EXTRA,
-    EFFORT_GOAL_DESC, EFFORT_GOAL_EXTRA,
-    EFFORT_DREAM_DESC, EFFORT_DREAM_EXTRA,
+    EFFORT_ULTRA_DESC,
+    EFFORT_ULTRA_EXTRA,
+    EFFORT_ULTRACOMBOMAX_DESC,
+    EFFORT_ULTRACOMBOMAX_EXTRA,
 )
 
 
@@ -168,12 +175,12 @@ _GOAL = Effort(
 
 _DREAM = Effort(
     name="dream", label="Dream Mode", multiplier=1000,
-    max_steps=300, max_tokens=1_000_000, temperature=0.02,
+    max_steps=600, max_tokens=1_000_000, temperature=0.02,
     description=EFFORT_DREAM_DESC,
     **_base_flags(plan=True, verify=True, research=True, diagnostic=True,
-                  retries=20, parallel=True, swarm=True, swarmsize=4,
+                  retries=30, parallel=True, swarm=True, swarmsize=12,
                   quality=True, security=True, metrics=True,
-                  preflight=True, gates=True, checkpoint=True, ctx=10),
+                  preflight=True, gates=True, checkpoint=True, ctx=25),
     **_autonomous_flags(goal=True, dream=True, accept=True, evidence=True,
                         adaptive=True, compress=True, multi_step=True,
                         chain=True, healing=True, risk=True, arch=True,

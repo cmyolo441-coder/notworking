@@ -8,6 +8,7 @@
   #11 todo_scan        — extract TODO / FIXME / HACK comments
 """
 from __future__ import annotations
+
 import ast
 import difflib
 import re
@@ -51,7 +52,7 @@ class CodeMetrics(Tool):  # feature #5
             return "No code files found."
         total_files = sum(by_lang.values())
         total_lines = sum(lines_by_lang.values())
-        out = [f"📊 Code Metrics", f"  Files: {total_files}   Lines: {total_lines}", "", "  By language:"]
+        out = ["📊 Code Metrics", f"  Files: {total_files}   Lines: {total_lines}", "", "  By language:"]
         for ext, cnt in by_lang.most_common():
             out.append(f"    {ext or '(none)':<8} {cnt:>4} files  {lines_by_lang[ext]:>6} lines")
         out.append("\n  Biggest files:")
@@ -210,3 +211,24 @@ class TodoScan(Tool):  # feature #11
             except Exception:
                 continue
         return "\n".join(out[:60]) if out else "No TODO/FIXME comments found."
+
+
+class FakeScan(Tool):
+    name = "fake_scan"
+    description = (
+        "Detect fake / simulated / placeholder code: empty stubs (pass/...), "
+        "raise NotImplementedError, fake return values, compute functions that "
+        "return empty/placeholder, sleep() used to simulate work, and TODO/FIXME "
+        "markers. Reports 'Fake/stub findings: N' — rewrite all blocking findings "
+        "into real working code and re-run until N is 0."
+    )
+
+    def parameters(self) -> dict:
+        return {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Directory or file (optional)."}}}
+
+    def run(self, workdir: str, path: str = ".", **_) -> str:
+        # Validate the path stays inside the workdir, then delegate to the engine.
+        safe_path(workdir, path or ".")
+        from ..core.dream import _fake_code_detection
+        return _fake_code_detection(workdir, path or ".")

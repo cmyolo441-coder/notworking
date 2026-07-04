@@ -6,7 +6,6 @@ modify karo.
 """
 from __future__ import annotations
 
-
 # =========================================================================
 # 1. MAIN SYSTEM PROMPT — Agent ka core personality aur principles
 # =========================================================================
@@ -117,10 +116,15 @@ EFFORT_DREAM_EXTRA = (
     "• Multi-phase: ANALYZE (deep AST + deps + baseline) → PLAN (milestones+risks+"
     "rollback) → IMPLEMENT (surgical edits, max 3 files per step) → "
     "VERIFY (lint+secret_scan+tests EACH change, compare before/after metrics) → "
-    "SELF-HEAL (retry up to 50 times) → REMEMBER (key decisions) → "
+    "SELF-HEAL (retry up to 30 times) → REMEMBER (key decisions) → "
     "EVIDENCE (hash-chained audit trail).\n"
+    "• NEVER-STOP: the loop auto-continues until the goal is verifiably complete "
+    "(tests pass, zero fake/simulated code, no errors) — it does NOT pause mid-run.\n"
+    "• NO FAKE CODE: the fake_scan engine flags stubs/TODO/NotImplementedError/"
+    "simulated work; rewrite every blocking finding into REAL code until it "
+    "reports 'Fake/stub findings: 0'.\n"
     "• Adaptive: adjust depth based on task complexity signals.\n"
-    "• Self-healing: auto-retry failures up to 50 times.\n"
+    "• Self-healing: auto-retry failures up to 30 times.\n"
     "• Architecture analysis: understand module boundaries and coupling.\n"
     "• Dependency analysis: detect circular deps, orphan modules.\n"
     "• Code quality: baseline metrics, regression detection.\n"
@@ -193,7 +197,7 @@ SPECIALISTS = {
 DREAM_CONTROL_HEADER = "[DREAM CONTROL PLANE — ULTIMATE] Goal: "
 
 DREAM_ULTRA_PRO_HEADER = """[DREAM MODE ULTRA PRO — MAXIMUM AUTONOMY]
-=== ANALYSIS ENGINES (14 parallel) ===
+=== ANALYSIS ENGINES (15 parallel, all run for real) ===
 1. Deep AST Analysis — cyclomatic complexity, cognitive complexity, maintainability index
 2. Dependency Graph — full DAG with circular detection, orphan detection
 3. Security Analysis — hardcoded secrets, dangerous functions, SQL injection, path traversal
@@ -208,6 +212,7 @@ DREAM_ULTRA_PRO_HEADER = """[DREAM MODE ULTRA PRO — MAXIMUM AUTONOMY]
 12. API Surface — public API analysis, decorator usage
 13. Test Coverage — test ratio, missing tests
 14. Documentation — docstring coverage, quality analysis
+15. Fake/Simulated Code — empty stubs, NotImplementedError, fake returns, simulated work
 
 === SWARM AGENTS (12 parallel) ===
 1. Project Structure Analysis
@@ -223,11 +228,14 @@ DREAM_ULTRA_PRO_HEADER = """[DREAM MODE ULTRA PRO — MAXIMUM AUTONOMY]
 11. Verification Planning
 12. Success Criteria
 
-=== VERIFICATION (100 retries) ===
-- Before/after metrics comparison
-- Regression detection
+=== DEEP RESEARCH ===
+- Web research over goal-derived queries (best-practice + example lookups)
+- Coordinated codebase research via the swarm
+
+=== VERIFICATION (never-stop until verified) ===
+- Auto-continue loop until tests pass, zero fake code, and no errors
+- Before/after metrics comparison + regression detection
 - Hash-chained evidence pack
-- Real-time monitoring
 
 === DIRECTIVE ===
 Goal: """

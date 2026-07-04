@@ -1,5 +1,6 @@
 """Base tool class + shared helpers (path safety, skip dirs)."""
 from __future__ import annotations
+
 import os
 from pathlib import Path
 

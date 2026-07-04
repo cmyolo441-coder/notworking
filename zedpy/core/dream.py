@@ -1075,60 +1075,90 @@ def control_plane(cfg: Config, goal: str) -> str:
         except Exception as e:
             blocks.append(f"### {label}\n(skipped: {e})")
 
-    # Phase 1: Quick project overview (concurrent, max 3 sec each)
+    def _run_parallel(analyzers: list[tuple], max_workers: int) -> None:
+        """Submit zero-arg thunks; append each result under its label.
+
+        NOTE: submit the function directly (ex.submit(fn)); an earlier version
+        passed the label string as the arg, so every analyzer silently failed.
+        """
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = {ex.submit(fn): label for label, fn in analyzers}
+            for fut in concurrent.futures.as_completed(futures):
+                label = futures[fut]
+                try:
+                    out = fut.result()
+                    if out:
+                        blocks.append(f"### {label}\n{str(out)[:2000]}")
+                except Exception as e:
+                    blocks.append(f"### {label}\n(skipped: {e})")
+
+    # Phase 1: Quick project overview (concurrent).
     quick_analyzers = [
-        ("Project Tree", lambda: REGISTRY["tree"].run(wd)),
-        ("Code Metrics", lambda: REGISTRY["code_metrics"].run(wd)),
-        ("Secret Scan", lambda: REGISTRY["secret_scan"].run(wd)),
+        ("Project tree", lambda: REGISTRY["tree"].run(wd)),
+        ("Code metrics", lambda: REGISTRY["code_metrics"].run(wd)),
+        ("Secret scan", lambda: REGISTRY["secret_scan"].run(wd)),
+        ("TODO scan", lambda: REGISTRY["todo_scan"].run(wd)),
     ]
+    _run_parallel(quick_analyzers, max_workers=4)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
-        futures = {ex.submit(lambda f: f[1](), label): label
-                   for label, _ in quick_analyzers}
-        for fut in concurrent.futures.as_completed(futures):
-            label = futures[fut]
-            try:
-                out = fut.result()
-                if out:
-                    blocks.append(f"### {label}\n{str(out)[:2000]}")
-            except Exception as e:
-                blocks.append(f"### {label}\n(skipped: {e})")
-
-    # Phase 2: Essential deep analysis (only 4 most important)
+    # Phase 2: All 14 deep-analysis engines run for real, in parallel.
     essential_analyzers = [
-        ("Security Analysis", lambda: _security_analysis(wd)),
-        ("Code Quality", lambda: _code_quality_baseline(wd)),
-        ("Risk Heatmap", lambda: _risk_heatmap(wd)),
+        ("Deep AST Analysis", lambda: _deep_ast_analysis(wd)),
         ("Dependency Graph", lambda: _dependency_graph(wd)),
+        ("Security Analysis", lambda: _security_analysis(wd)),
+        ("Performance Analysis", lambda: _performance_analysis(wd)),
+        ("Code Quality", lambda: _code_quality_baseline(wd)),
+        ("Architecture Brain", lambda: _architecture_brain(wd)),
+        ("Risk Heatmap", lambda: _risk_heatmap(wd)),
+        ("Change Impact", lambda: _change_impact(wd)),
+        ("Dead Code Detection", lambda: _dead_code_detection(wd)),
+        ("Type Hints Analysis", lambda: _type_hints_analysis(wd)),
+        ("Code Smells", lambda: _code_smells_detection(wd)),
+        ("API Surface", lambda: _api_surface_analysis(wd)),
+        ("Test Coverage", lambda: _test_coverage_analysis(wd)),
+        ("Documentation", lambda: _documentation_analysis(wd)),
+        ("Fake/Simulated Code", lambda: _fake_code_detection(wd)),
     ]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-        futures = {ex.submit(lambda f: f[1](), label): label
-                   for label, _ in essential_analyzers}
-        for fut in concurrent.futures.as_completed(futures):
-            label = futures[fut]
+    _run_parallel(essential_analyzers, max_workers=8)
+
+    # Phase 3: Deep web research (real network, but wrapped so offline never hangs).
+    def _web_research() -> str:
+        queries = _derive_research_queries(goal)
+        out = [f"Deep web research ({len(queries)} queries):", ""]
+        for q in queries:
             try:
-                out = fut.result()
-                if out:
-                    blocks.append(f"### {label}\n{str(out)[:2000]}")
+                res = REGISTRY["web_search"].run(wd, query=q)
             except Exception as e:
-                blocks.append(f"### {label}\n(skipped: {e})")
+                res = f"(search failed: {e})"
+            out.append(f"» {q}\n{str(res)[:1200]}\n")
+        return "\n".join(out)
+    safe("Web Research", _web_research)
 
-    # Phase 3: Quick checkpoint
-    safe("Checkpoint", lambda: checkpoint.create(wd, f"dream-{time.strftime('%H%M%S')}"))
+    # Phase 4: Project checkpoint (sequential — it writes to .zedpy/).
+    safe("Auto-checkpoint",
+         lambda: checkpoint.create(wd, f"dream-{time.strftime('%H%M%S')}"))
 
-    # Phase 4: Milestone plan (short)
+    # Phase 5: Milestone plan (DAG-based, short).
     blocks.append(_milestone_plan(goal, wd))
 
-    # Phase 5: Fast swarm (only 4 agents for speed)
-    def _swarm():
+    # Phase 6: Coordinated swarm research (sequential to avoid rate limits).
+    def _swarm() -> str:
         subtasks = [
-            f"ANALYZE project and identify key files for: {goal}",
-            f"PLAN implementation steps with dependencies: {goal}",
-            f"IDENTIFY risks and edge cases: {goal}",
-            f"SUGGEST verification strategy: {goal}",
+            f"ANALYZE project structure and identify key files for: {goal}",
+            f"BREAK DOWN implementation into milestones with dependencies: {goal}",
+            f"IDENTIFY risks, edge cases and failure modes for: {goal}",
+            f"MAP dependencies and integration points for: {goal}",
+            f"DETECT potential conflicts/regressions for: {goal}",
+            f"OPTIMIZE the implementation approach for: {goal}",
+            f"ESTIMATE complexity and effort for: {goal}",
+            f"DESIGN a rollback strategy for: {goal}",
+            f"REVIEW existing patterns/conventions relevant to: {goal}",
+            f"VALIDATE security implications of: {goal}",
+            f"PLAN verification and test strategy for: {goal}",
+            f"DEFINE success criteria (definition of done) for: {goal}",
         ]
-        return run_swarm(cfg, subtasks, max_workers=4)
-    safe("Swarm Research (4 agents)", _swarm)
+        return run_swarm(cfg, subtasks, max_workers=3)
+    safe("Swarm Research", _swarm)
 
     blocks.append("")
     blocks.append("[DIRECTIVE — DREAM ULTRA PRO]")
@@ -1137,11 +1167,35 @@ def control_plane(cfg: Config, goal: str) -> str:
     blocks.append("2. PLAN: DAG-based milestones with dependencies, parallel execution, rollback")
     blocks.append("3. IMPLEMENT: surgical edits, follow conventions, max 3 files per step")
     blocks.append("4. VERIFY: lint + secret_scan + tests after EACH change, compare before/after")
-    blocks.append("5. SELF-HEAL: auto-retry failures up to 100 times")
-    blocks.append("6. REMEMBER: key decisions via remember tool")
-    blocks.append("7. EVIDENCE: hash-chained audit trail with timestamps")
+    blocks.append("5. SELF-HEAL: diagnose failures and retry with a different approach")
+    blocks.append("6. NO FAKE CODE: any pass/TODO/NotImplementedError/mock/simulated code "
+                  "found by the 'Fake/Simulated Code' engine MUST be rewritten into real, "
+                  "working code. Call the fake_scan tool and keep going until it reports "
+                  "'Fake/stub findings: 0'.")
+    blocks.append("7. REMEMBER: key decisions via remember tool")
+    blocks.append("8. EVIDENCE: hash-chained audit trail with timestamps")
     blocks.append("Auto-accept ON. Never declare 'done' without verification.")
     return "\n\n".join(blocks)
+
+
+def _derive_research_queries(goal: str) -> list[str]:
+    """Turn a goal into a few focused web-research queries (best-effort)."""
+    g = (goal or "").strip()
+    short = g if len(g) <= 80 else g[:80]
+    queries = [
+        f"{short} best practices",
+        f"{short} python example implementation",
+        f"how to {short}",
+    ]
+    # Dedupe while preserving order, drop empties.
+    seen: set[str] = set()
+    out: list[str] = []
+    for q in queries:
+        q = q.strip()
+        if q and q.lower() not in seen:
+            seen.add(q.lower())
+            out.append(q)
+    return out
 
 
 # ============================================================================
@@ -1531,3 +1585,237 @@ def _documentation_analysis(workdir: str) -> str:
         lines.append("\n  ✓ Good documentation coverage")
 
     return "\n".join(lines)
+
+
+# ============================================================================
+# FAKE / SIMULATED CODE DETECTION ENGINE
+# ============================================================================
+
+# Names/decorators/bases that legitimately have empty or stub bodies.
+_ABSTRACT_DECORATORS = {"abstractmethod", "abstractproperty", "overload",
+                        "abc.abstractmethod", "abstractclassmethod",
+                        "abstractstaticmethod"}
+_ABSTRACT_BASES = {"ABC", "ABCMeta", "Protocol", "abc.ABC"}
+_FAKE_WORDS = {"fake", "dummy", "mock", "stub", "placeholder", "todo",
+               "changeme", "change_me", "foobar", "foo", "bar", "xxx",
+               "tbd", "notimplemented", "not_implemented"}
+_COMPUTE_PREFIXES = ("compute", "calculate", "calc_", "get_", "fetch_",
+                     "load_", "read_", "build_", "make_", "create_",
+                     "parse_", "process_", "run_", "handle_")
+_SIMULATE_MARKERS = ("simulate", "simulated", "fake", "pretend", "mock",
+                     "dummy", "placeholder", "for now", "temporary", "stub")
+
+
+def _decorator_name(dec) -> str:
+    """Best-effort dotted name of a decorator node."""
+    if isinstance(dec, ast.Name):
+        return dec.id
+    if isinstance(dec, ast.Attribute):
+        parts = []
+        node = dec
+        while isinstance(node, ast.Attribute):
+            parts.append(node.attr)
+            node = node.value
+        if isinstance(node, ast.Name):
+            parts.append(node.id)
+        return ".".join(reversed(parts))
+    if isinstance(dec, ast.Call):
+        return _decorator_name(dec.func)
+    return ""
+
+
+def _base_name(base) -> str:
+    if isinstance(base, ast.Name):
+        return base.id
+    if isinstance(base, ast.Attribute):
+        return f"{_base_name(base.value)}.{base.attr}" if base.value else base.attr
+    return ""
+
+
+class _FakeCodeVisitor(ast.NodeVisitor):
+    """Walk a module, flagging fake/stub/simulated code with low false positives.
+
+    Tracks the enclosing-class stack so abstract-method / Protocol bodies (which
+    are legitimately empty) are not flagged.
+    """
+
+    def __init__(self, rel: str, source_lines: list[str], is_pyi: bool):
+        self.rel = rel
+        self.lines = source_lines
+        self.is_pyi = is_pyi
+        self.class_stack: list[set[str]] = []  # bases per enclosing class
+        self.findings: list[dict] = []  # {line, category, severity, snippet}
+
+    # --- class tracking ---
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        bases = {_base_name(b) for b in node.bases}
+        self.class_stack.append(bases)
+        self.generic_visit(node)
+        self.class_stack.pop()
+
+    # --- function bodies ---
+    def visit_FunctionDef(self, node) -> None:
+        self._check_function(node)
+        self.generic_visit(node)
+
+    def visit_AsyncFunctionDef(self, node) -> None:
+        self._check_function(node)
+        self.generic_visit(node)
+
+    def _is_abstract_context(self, node) -> bool:
+        decs = {_decorator_name(d) for d in node.decorator_list}
+        if decs & _ABSTRACT_DECORATORS:
+            return True
+        for bases in self.class_stack:
+            if bases & _ABSTRACT_BASES:
+                return True
+        return False
+
+    def _add(self, line: int, category: str, severity: str) -> None:
+        snippet = ""
+        if 1 <= line <= len(self.lines):
+            snippet = self.lines[line - 1].strip()[:100]
+        self.findings.append({"line": line, "category": category,
+                              "severity": severity, "snippet": snippet})
+
+    def _check_function(self, node) -> None:
+        body = list(node.body)
+        # Drop a leading docstring.
+        if (body and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            body = body[1:]
+        if not body:
+            return
+
+        abstract = self._is_abstract_context(node)
+
+        # 1. Body is a single `pass`.
+        if len(body) == 1 and isinstance(body[0], ast.Pass):
+            if not abstract:
+                self._add(node.lineno, "empty-stub (pass)", "blocking")
+            return
+
+        # 2. Body is a single `...` (Ellipsis).
+        if (len(body) == 1 and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and body[0].value.value is Ellipsis):
+            if not abstract and not self.is_pyi:
+                self._add(node.lineno, "empty-stub (...)", "blocking")
+            return
+
+        # 3. Body is a single `raise NotImplementedError`.
+        if len(body) == 1 and isinstance(body[0], ast.Raise):
+            exc = body[0].exc
+            exc_name = ""
+            if isinstance(exc, ast.Name):
+                exc_name = exc.id
+            elif isinstance(exc, ast.Call) and isinstance(exc.func, ast.Name):
+                exc_name = exc.func.id
+            if exc_name == "NotImplementedError" and not abstract:
+                self._add(node.lineno, "NotImplementedError stub", "blocking")
+            return
+
+        # 4. Single return of a fake/placeholder value in a compute-like fn.
+        if len(body) == 1 and isinstance(body[0], ast.Return):
+            self._check_fake_return(node, body[0])
+
+    def _check_fake_return(self, fn, ret: ast.Return) -> None:
+        val = ret.value
+        name = fn.name.lower()
+        # Fake string/word literal returned anywhere.
+        if isinstance(val, ast.Constant) and isinstance(val.value, str):
+            if val.value.strip().lower() in _FAKE_WORDS:
+                self._add(ret.lineno, "fake return value", "blocking")
+                return
+        # Empty/zero return from a function that claims to compute something.
+        computes = name.startswith(_COMPUTE_PREFIXES)
+        if computes:
+            empty = (
+                (isinstance(val, ast.Constant) and val.value in (None, 0))
+                or (isinstance(val, ast.Dict) and not val.keys)
+                or (isinstance(val, (ast.List, ast.Tuple, ast.Set)) and not val.elts)
+            )
+            if empty:
+                self._add(ret.lineno, "compute fn returns empty/placeholder",
+                          "blocking")
+
+
+def _fake_code_detection(workdir: str, path: str = ".") -> str:
+    """Detect fake / simulated / placeholder code across the tree.
+
+    Blocking-severity findings (empty stubs, NotImplementedError, fake returns,
+    simulated sleeps) are what gate Dream Mode completion. TODO/FIXME markers
+    are reported as low severity so they don't block the never-stop loop.
+    """
+    from ..tools.base import walk_files
+    root = Path(workdir).resolve()
+    base = (root / path).resolve() if path not in (".", "") else root
+
+    blocking: list[tuple[str, dict]] = []
+    low: list[tuple[str, dict]] = []
+
+    todo_re = re.compile(r"\b(TODO|FIXME|HACK|XXX)\b")
+    sleep_re = re.compile(r"\b(?:time\.)?sleep\s*\(")
+
+    for fp in walk_files(root):
+        if fp.suffix not in (".py", ".pyi"):
+            continue
+        if base != root and base not in fp.parents and fp != base:
+            continue
+        rel = str(fp.relative_to(root))
+        is_test = rel.startswith("test") or "test" in Path(rel).parts or "tests" in rel
+
+        try:
+            src = fp.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        src_lines = src.split("\n")
+
+        # AST-based structural signals.
+        try:
+            tree = ast.parse(src)
+            visitor = _FakeCodeVisitor(rel, src_lines, fp.suffix == ".pyi")
+            visitor.visit(tree)
+            for f in visitor.findings:
+                if is_test:
+                    continue  # stubs in tests are expected
+                blocking.append((rel, f))
+        except SyntaxError:
+            pass
+
+        # Line-based signals.
+        for i, line in enumerate(src_lines, 1):
+            stripped = line.strip()
+            # TODO/FIXME markers (low severity).
+            if todo_re.search(line):
+                low.append((rel, {"line": i, "category": "TODO/FIXME marker",
+                                  "severity": "low", "snippet": stripped[:100]}))
+            # sleep() used to simulate work (marker comment required).
+            if sleep_re.search(line) and not is_test:
+                prev = src_lines[i - 2] if i >= 2 else ""
+                ctx = (line + " " + prev).lower()
+                if any(m in ctx for m in _SIMULATE_MARKERS):
+                    blocking.append((rel, {
+                        "line": i, "category": "simulated work (sleep)",
+                        "severity": "blocking", "snippet": stripped[:100]}))
+
+    out = ["### Fake / Simulated Code Detection\n"]
+    out.append(f"  Blocking findings: {len(blocking)}")
+    out.append(f"  Low-severity markers (TODO/FIXME): {len(low)}")
+
+    if blocking:
+        out.append("\n  ⚠️ BLOCKING — rewrite these into real working code:")
+        for rel, f in blocking[:25]:
+            out.append(f"    {rel}:{f['line']} [{f['category']}] {f['snippet']}")
+    if low:
+        out.append("\n  Markers (non-blocking):")
+        for rel, f in low[:10]:
+            out.append(f"    {rel}:{f['line']} [{f['category']}] {f['snippet']}")
+
+    if not blocking:
+        out.append("\n  ✓ No fake/simulated code detected.")
+
+    # Machine-readable line consumed by the Dream completion check.
+    out.append(f"\nFake/stub findings: {len(blocking)}")
+    return "\n".join(out)

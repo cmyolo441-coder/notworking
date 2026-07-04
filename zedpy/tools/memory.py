@@ -1,7 +1,8 @@
 """Memory tools — agent cross-session facts remember/recall kar sake (Feature 10)."""
 from __future__ import annotations
-from .base import Tool
+
 from ..core.memory import MEMORY
+from .base import Tool
 
 
 class Remember(Tool):

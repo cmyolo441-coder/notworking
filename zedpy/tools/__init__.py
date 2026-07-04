@@ -1,13 +1,21 @@
 """Tool registry. Naya tool add karna? Yahan TOOLS list me daal do."""
-from .files import ReadFile, WriteFile, AppendFile, EditFile, ListDir
-from .search import Grep, FindFiles
-from .shell import RunShell
-from .git import GitTool
-from .websearch import WebSearch
+from .advanced1 import (
+    CodeMetrics,
+    Deps,
+    FakeScan,
+    FuzzyFind,
+    Lint,
+    SecretScan,
+    TodoScan,
+)
+from .advanced2 import DataTool, HttpRequest, RegexReplace, Scaffold, ShowDiff, Tree
 from .analyze import AnalyzeCode
-from .memory import Remember, Recall
-from .advanced1 import CodeMetrics, FuzzyFind, Lint, Deps, SecretScan, TodoScan
-from .advanced2 import ShowDiff, Scaffold, HttpRequest, DataTool, RegexReplace, Tree
+from .files import AppendFile, EditFile, ListDir, ReadFile, WriteFile
+from .git import GitTool
+from .memory import Recall, Remember
+from .search import FindFiles, Grep
+from .shell import RunShell
+from .websearch import WebSearch
 
 TOOLS = [
     # File ops
@@ -34,6 +42,7 @@ TOOLS = [
     Deps(),             # #9
     SecretScan(),       # #10
     TodoScan(),         # #11
+    FakeScan(),         # fake/simulated code detector (Dream Mode)
     ShowDiff(),         # #2
     Scaffold(),         # #12
     HttpRequest(),      # #13

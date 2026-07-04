@@ -8,6 +8,7 @@ Enhanced features:
   - Error isolation: one agent failure doesn't affect others
 """
 from __future__ import annotations
+
 import concurrent.futures
 import time
 from dataclasses import dataclass

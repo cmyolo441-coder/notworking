@@ -4,6 +4,7 @@ Har mutating tool (write/edit/append) change se pehle ek snapshot leta hai.
 UndoManager in snapshots ko stack me rakhta hai; /undo aur /redo se revert hota hai.
 """
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 

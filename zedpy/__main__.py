@@ -8,6 +8,7 @@
     python -m zedpy --update        # update BITTU from GitHub
 """
 from __future__ import annotations
+
 import argparse
 import os
 import sys
@@ -49,14 +50,21 @@ def _plain_repl(cfg: Config, one_shot: str = "") -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="zedpy", description="BITTU — Grok-style terminal AI agent.")
+    parser = argparse.ArgumentParser(
+        prog="zedpy",
+        description="BITTU — Grok-style terminal AI agent.",
+    )
     parser.add_argument("--workdir", default=os.getcwd())
     parser.add_argument("--model", default="")
     parser.add_argument("--base-url", default="")
-    parser.add_argument("--yolo", action="store_true", help="Auto-approve all actions.")
-    parser.add_argument("--plain", action="store_true", help="Use the plain REPL instead of the TUI.")
-    parser.add_argument("-p", "--prompt", default="", help="One prompt, then exit (implies --plain).")
-    parser.add_argument("--update", action="store_true", help="Update BITTU from GitHub.")
+    parser.add_argument("--yolo", action="store_true",
+                        help="Auto-approve all actions.")
+    parser.add_argument("--plain", action="store_true",
+                        help="Use the plain REPL instead of the TUI.")
+    parser.add_argument("-p", "--prompt", default="",
+                        help="One prompt, then exit (implies --plain).")
+    parser.add_argument("--update", action="store_true",
+                        help="Update BITTU from GitHub.")
     args = parser.parse_args()
 
     # Handle --update flag

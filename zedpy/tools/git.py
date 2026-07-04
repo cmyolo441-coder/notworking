@@ -4,7 +4,9 @@ Agent ko git operations dega: status, diff, log, add, commit, branch.
 Sirf whitelisted subcommands (safe). shell=False (injection-safe).
 """
 from __future__ import annotations
+
 import subprocess
+
 from .base import Tool
 
 _ALLOWED = {"status", "diff", "log", "add", "commit", "branch",

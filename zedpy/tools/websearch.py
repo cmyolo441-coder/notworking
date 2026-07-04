@@ -3,9 +3,11 @@
 Real-time info fetch: search results ya ek URL ka text content.
 """
 from __future__ import annotations
+
 import re
 import urllib.parse
 import urllib.request
+
 from .base import Tool
 
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"

@@ -8,6 +8,7 @@ Enhanced features:
   - Timestamped: track when entries were last accessed
 """
 from __future__ import annotations
+
 import json
 import math
 import os

@@ -4,10 +4,12 @@ Har mutating tool (write/append/edit) change se pehle ek in-memory snapshot
 leta hai (undo ke liye) via the shared SNAPSHOTS list.
 """
 from __future__ import annotations
+
 import os
 from pathlib import Path
-from .base import Tool, safe_path
+
 from ..core.undo import MANAGER as UNDO
+from .base import Tool, safe_path
 
 
 def _snapshot(p: Path, tool: str = "write"):

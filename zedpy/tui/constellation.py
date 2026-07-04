@@ -4,6 +4,7 @@ Renders a starfield of faint dots with "BITTU" (or any brand) in the middle,
 matching the reference screenshot's centered constellation logo.
 """
 from __future__ import annotations
+
 import random
 
 from rich.text import Text

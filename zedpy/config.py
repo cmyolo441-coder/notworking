@@ -15,9 +15,9 @@ SECURITY NOTE: The default key below is in plaintext for convenience.
 In production, use ZEDPY_API_KEY env var and rotate regularly.
 """
 from __future__ import annotations
-import os
-from dataclasses import dataclass, field
 
+import os
+from dataclasses import dataclass
 
 # --- Built-in defaults ---
 # API key: prefer environment variable; fallback is a placeholder (not a real key).
@@ -35,7 +35,11 @@ DEFAULT_TIMEOUT = 4000
 # Cloudflare Workers AI defaults
 CF_ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID", "")
 CF_API_KEY = os.environ.get("CF_API_KEY", "")
-CF_BASE_URL = f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/v1/chat/completions" if CF_ACCOUNT_ID else ""
+CF_BASE_URL = (
+    f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}"
+    "/ai/v1/chat/completions"
+    if CF_ACCOUNT_ID else ""
+)
 
 # NVIDIA NIM defaults
 NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY", "")
@@ -155,10 +159,10 @@ class Config:
         auto_approve = os.getenv("ZEDPY_AUTO_APPROVE", "").lower() in ("true", "1", "yes")
         effort = os.getenv("ZEDPY_EFFORT", "normal")
         workdir = os.getenv("ZEDPY_WORKDIR", "") or os.getcwd()
-        
+
         # Resolve API key: env var > config file > default
         api_key = os.getenv("ZEDPY_API_KEY", "") or os.getenv("OPENCODE_API_KEY", "") or DEFAULT_API_KEY
-        
+
         # Try to read from config file if still empty
         if not api_key:
             config_paths = [
@@ -175,7 +179,7 @@ class Config:
                                 break
                     except Exception:
                         pass
-        
+
         return cls(
             api_key=api_key,
             base_url=os.getenv("ZEDPY_BASE_URL", DEFAULT_BASE_URL),
