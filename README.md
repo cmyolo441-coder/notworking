@@ -61,6 +61,39 @@ pip install -e .
 
 ---
 
+## 🔄 Updating BITTU
+
+BITTU ko update karna bahut aasan hai. Jab bhi naya version aaye, bas ek command chalao:
+
+### Option 1: CLI Command (Recommended)
+```bash
+bittu --update
+```
+
+### Option 2: Python Module
+```bash
+python -m zedpy --update
+```
+
+### Option 3: Shell Script
+```bash
+./update.sh
+```
+
+### Option 4: Manual Update
+```bash
+cd /path/to/notworking
+git pull origin main
+pip install -e .
+```
+
+### How Update Works:
+1. GitHub se latest code automatically pull karta hai
+2. Naya code install karta hai
+3. turant naya version available ho jata hai
+
+---
+
 ## 🎯 Usage
 
 ```bash
