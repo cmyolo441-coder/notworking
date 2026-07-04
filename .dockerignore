@@ -1,0 +1,43 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+*.egg
+dist
+build
+.eggs
+
+# Virtual environments
+venv
+.env
+.venv
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Test files
+test_*.py
+*_test.py
+.pytest_cache
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+
+# Chat logs
+bittu-chat-*.md
+
+# Zed risk
+.zed-risk-waivers.json
+.claude/

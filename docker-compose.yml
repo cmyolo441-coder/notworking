@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  bittu:
+    build: .
+    container_name: bittu
+    stdin_open: true
+    tty: true
+    environment:
+      - ZEDPY_API_KEY=${ZEDPY_API_KEY}
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY}
+    volumes:
+      - ./workspace:/workspace
+      - bittu-config:/root/.config/zedpy
+    working_dir: /workspace
+    restart: unless-stopped
+
+volumes:
+  bittu-config:
