@@ -59,6 +59,54 @@ cd notworking
 pip install -e .
 ```
 
+### Option 5: Docker (Cloud Ready)
+```bash
+# Pull and run
+docker pull bittu:latest
+docker run -it --rm bittu:latest
+
+# Or with workspace mount
+docker run -it --rm -v $(pwd)/workspace:/workspace bittu:latest
+
+# Or build locally
+git clone https://github.com/cmyolo441-coder/notworking.git
+cd notworking
+docker build -t bittu .
+docker run -it --rm bittu
+```
+
+---
+
+## 🔑 API Key Setup
+
+BITTU ko API key ki zaroorat hai. Ye kaise kare:
+
+### Option 1: Environment Variable (Recommended)
+```bash
+# Linux/Mac
+export ZEDPY_API_KEY='your-api-key-here'
+
+# Windows
+set ZEDPY_API_KEY=your-api-key-here
+```
+
+### Option 2: Config File
+```bash
+mkdir -p ~/.config/zedpy
+echo "your-api-key-here" > ~/.config/zedpy/api_key
+```
+
+### Option 3: Login Command
+```bash
+bittu
+# Then type: /login
+```
+
+### Available API Keys:
+- **OpenCode**: `mimo-v2.5-free` (free tier)
+- **NVIDIA**: `nvapi-...` (free tier)
+- **Cloudflare**: `cfut_...` (free tier)
+
 ---
 
 ## 🔄 Updating BITTU
