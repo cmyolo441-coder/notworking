@@ -17,6 +17,100 @@ Ye actually:
 
 ---
 
+## 🚀 Quick Install
+
+### Option 1: pip install (Recommended)
+```bash
+# Install directly from GitHub
+pip install git+https://github.com/cmyolo441-coder/notworking.git
+
+# Or clone and install
+git clone https://github.com/cmyolo441-coder/notworking.git
+cd notworking
+pip install .
+```
+
+### Option 2: Build Binary (No Python needed after build)
+```bash
+# Clone the repo
+git clone https://github.com/cmyolo441-coder/notworking.git
+cd notworking
+
+# Build binary
+make build
+# OR
+./build.sh
+
+# Binary will be in dist/bittu/
+./dist/bittu/bittu
+```
+
+### Option 3: Quick Install Script
+```bash
+git clone https://github.com/cmyolo441-coder/notworking.git
+cd notworking
+./install.sh
+```
+
+### Option 4: Development Mode
+```bash
+git clone https://github.com/cmyolo441-coder/notworking.git
+cd notworking
+pip install -e .
+```
+
+---
+
+## 🎯 Usage
+
+```bash
+# Launch TUI (default)
+bittu
+
+# Plain REPL mode
+bittu --plain
+
+# One-shot prompt
+bittu -p "read README"
+
+# Auto-approve mode
+bittu --yolo
+
+# Different directory
+bittu --workdir /path/to/project
+```
+
+---
+
+## 🧠 Dream Mode ULTRA PRO
+
+```bash
+# Basic Dream Mode
+/dream <your goal>
+
+# Fast Dream Mode (auto model selection)
+/dream-fast <your goal>
+
+# Ultra Dream Mode (maximum power)
+/dream-ultra <your goal>
+```
+
+### 14 Parallel Analysis Engines:
+1. Deep AST Analysis
+2. Dependency Graph
+3. Security Analysis
+4. Performance Analysis
+5. Code Quality Baseline
+6. Architecture Brain
+7. Risk Heatmap
+8. Change Impact
+9. Dead Code Detection
+10. Type Hints Analysis
+11. Code Smells
+12. API Surface
+13. Test Coverage
+14. Documentation
+
 ## Interface (Grok CLI jaisa)
 
 ```

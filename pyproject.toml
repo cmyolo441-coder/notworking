@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "bittu"
+version = "1.0.0"
+description = "BITTU — Grok-style terminal AI agent with Dream Mode ULTRA PRO"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "BITTU Team"}
+]
+keywords = ["ai", "agent", "terminal", "tui", "code"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Code Generators",
+]
+
+dependencies = [
+    "textual>=0.40.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+bittu = "zedpy.__main__:main"
+bittu-tui = "zedpy.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/cmyolo441-coder/notworking"
+Repository = "https://github.com/cmyolo441-coder/notworking"
+
+[tool.setuptools.packages.find]
+include = ["zedpy*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
