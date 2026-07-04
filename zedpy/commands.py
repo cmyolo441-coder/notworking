@@ -5,6 +5,7 @@ Har command ka ek naam, ek short description, aur ek handler hota hai. Jab user
 Handlers ko app object milta hai taaki wo UI/agent state badal saken.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Callable
 
@@ -101,28 +102,25 @@ def _setkey(app, arg: str) -> str:
             "Or: export OPENCODE_API_KEY='your-key'\n"
             "Or: export NVIDIA_API_KEY='nvapi-...'"
         )
-    
+
     # Determine which provider based on current base_url
     base_url = app.cfg.base_url
     if "nvidia.com" in base_url:
-        env_var = "NVIDIA_API_KEY"
         config_dir = os.path.expanduser("~/.config/zedpy")
     elif "cloudflare.com" in base_url:
-        env_var = "CF_API_KEY"
         config_dir = os.path.expanduser("~/.config/zedpy")
     else:
-        env_var = "ZEDPY_API_KEY"
         config_dir = os.path.expanduser("~/.config/zedpy")
-    
+
     # Save to config file
     os.makedirs(config_dir, exist_ok=True)
     key_file = os.path.join(config_dir, "api_key")
     with open(key_file, 'w') as f:
         f.write(arg)
-    
+
     # Also set in current config
     app.cfg.api_key = arg
-    
+
     return f"API key saved to {key_file}\nModel: {app.cfg.model}\nProvider: {base_url}"
 
 
@@ -347,27 +345,27 @@ def _dream_fast(app, arg: str) -> str:
     """Dream Mode with auto fast model selection for quick responses."""
     from .config import MODEL_PROFILES
     from .core.dream import get_dream_fast_model
-    
+
     # Set dream effort
     app.agent.set_effort("dream"); app.cfg.effort = "dream"
-    
+
     # Auto-select fastest model using apply_profile
     fast_model = get_dream_fast_model()
     if fast_model in MODEL_PROFILES:
         app.cfg.apply_profile(fast_model)
-    
+
     # Rebuild agent with new settings
     if hasattr(app, 'agent'):
         from .agent import Agent
         app.agent = Agent(app.cfg)
-    
+
     app.refresh_status()
-    
+
     if arg.strip():
         app.log_user(f"/dream-fast {arg.strip()}")
         app._run_agent_async(arg.strip())
         return ""
-    
+
     return (f"🚀 DREAM MODE ULTRA PRO — Fast Model Active!\n"
             f"Model: {app.cfg.model}\n"
             f"Max Tokens: {app.cfg.max_tokens}\n"
@@ -394,32 +392,32 @@ def _dream_ultra(app, arg: str) -> str:
     """Dream Mode ULTRA PRO with maximum analysis and verification."""
     from .config import MODEL_PROFILES
     from .core.dream import get_dream_fast_model
-    
+
     # Set dream effort with maximum settings
     app.agent.set_effort("dream"); app.cfg.effort = "dream"
-    
+
     # Use best available model using apply_profile
     fast_model = get_dream_fast_model()
     if fast_model in MODEL_PROFILES:
         app.cfg.apply_profile(fast_model)
-    
+
     # Enable all advanced features
     app.cfg.plan_mode = True
     app.cfg.auto_test = True
-    
+
     # Rebuild agent with new settings
     if hasattr(app, 'agent'):
         from .agent import Agent
         app.agent = Agent(app.cfg)
         app.agent.rebuild_system()
-    
+
     app.refresh_status()
-    
+
     if arg.strip():
         app.log_user(f"/dream-ultra {arg.strip()}")
         app._run_agent_async(arg.strip())
         return ""
-    
+
     return (f"🔥 DREAM MODE ULTRA PRO — Maximum Power!\n"
             f"Model: {app.cfg.model}\n"
             f"Max Tokens: {app.cfg.max_tokens}\n"
