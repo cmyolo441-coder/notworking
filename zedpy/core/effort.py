@@ -168,12 +168,12 @@ _GOAL = Effort(
 
 _DREAM = Effort(
     name="dream", label="Dream Mode", multiplier=1000,
-    max_steps=600, max_tokens=1_000_000, temperature=0.02,
+    max_steps=300, max_tokens=1_000_000, temperature=0.02,
     description=EFFORT_DREAM_DESC,
     **_base_flags(plan=True, verify=True, research=True, diagnostic=True,
-                  retries=100, parallel=True, swarm=True, swarmsize=12,
+                  retries=20, parallel=True, swarm=True, swarmsize=4,
                   quality=True, security=True, metrics=True,
-                  preflight=True, gates=True, checkpoint=True, ctx=25),
+                  preflight=True, gates=True, checkpoint=True, ctx=10),
     **_autonomous_flags(goal=True, dream=True, accept=True, evidence=True,
                         adaptive=True, compress=True, multi_step=True,
                         chain=True, healing=True, risk=True, arch=True,

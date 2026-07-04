@@ -1060,7 +1060,7 @@ def _milestone_plan(goal: str, workdir: str) -> str:
 # ============================================================================
 
 def control_plane(cfg: Config, goal: str) -> str:
-    """Run ALL analyzers concurrently + deep analysis + swarm research."""
+    """Run essential analyzers + fast swarm research for smooth operation."""
     from ..tools import REGISTRY
     from ..core import checkpoint
     from ..core.swarm import run_swarm
@@ -1076,85 +1076,64 @@ def control_plane(cfg: Config, goal: str) -> str:
         try:
             out = fn()
             if out:
-                blocks.append(f"### {label}\n{str(out)[:4000]}")
+                blocks.append(f"### {label}\n{str(out)[:2000]}")
         except Exception as e:
             blocks.append(f"### {label}\n(skipped: {e})")
 
-    # Phase 1: Basic analyzers (concurrent)
-    analyzers = [
+    # Phase 1: Quick project overview (concurrent, max 3 sec each)
+    quick_analyzers = [
         ("Project Tree", lambda: REGISTRY["tree"].run(wd)),
         ("Code Metrics", lambda: REGISTRY["code_metrics"].run(wd)),
-        ("Dependencies", lambda: REGISTRY["deps"].run(wd)),
         ("Secret Scan", lambda: REGISTRY["secret_scan"].run(wd)),
-        ("TODO Scan", lambda: REGISTRY["todo_scan"].run(wd)),
     ]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
         futures = {ex.submit(lambda f: f[1](), label): label
-                   for label, _ in analyzers}
+                   for label, _ in quick_analyzers}
         for fut in concurrent.futures.as_completed(futures):
             label = futures[fut]
             try:
                 out = fut.result()
                 if out:
-                    blocks.append(f"### {label}\n{str(out)[:4000]}")
+                    blocks.append(f"### {label}\n{str(out)[:2000]}")
             except Exception as e:
                 blocks.append(f"### {label}\n(skipped: {e})")
 
-    # Phase 2: Deep analysis (parallel)
-    deep_analyzers = [
-        ("Deep AST Analysis", lambda: _deep_ast_analysis(wd)),
-        ("Dependency Graph", lambda: _dependency_graph(wd)),
+    # Phase 2: Essential deep analysis (only 4 most important)
+    essential_analyzers = [
         ("Security Analysis", lambda: _security_analysis(wd)),
-        ("Performance Analysis", lambda: _performance_analysis(wd)),
-        ("Code Quality Baseline", lambda: _code_quality_baseline(wd)),
-        ("Architecture Brain", lambda: _architecture_brain(wd)),
+        ("Code Quality", lambda: _code_quality_baseline(wd)),
         ("Risk Heatmap", lambda: _risk_heatmap(wd)),
-        ("Change Impact", lambda: _change_impact(wd)),
-        ("Dead Code Detection", lambda: _dead_code_detection(wd)),
-        ("Type Hints Analysis", lambda: _type_hints_analysis(wd)),
-        ("Code Smells", lambda: _code_smells_detection(wd)),
-        ("API Surface", lambda: _api_surface_analysis(wd)),
-        ("Test Coverage", lambda: _test_coverage_analysis(wd)),
-        ("Documentation", lambda: _documentation_analysis(wd)),
+        ("Dependency Graph", lambda: _dependency_graph(wd)),
     ]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
         futures = {ex.submit(lambda f: f[1](), label): label
-                   for label, _ in deep_analyzers}
+                   for label, _ in essential_analyzers}
         for fut in concurrent.futures.as_completed(futures):
             label = futures[fut]
             try:
                 out = fut.result()
                 if out:
-                    blocks.append(f"### {label}\n{str(out)[:4000]}")
+                    blocks.append(f"### {label}\n{str(out)[:2000]}")
             except Exception as e:
                 blocks.append(f"### {label}\n(skipped: {e})")
 
-    # Phase 3: Project checkpoint
-    safe("Auto-Checkpoint",
-         lambda: checkpoint.create(wd, f"dream-{time.strftime('%H%M%S')}"))
+    # Phase 3: Quick checkpoint
+    safe("Checkpoint", lambda: checkpoint.create(wd, f"dream-{time.strftime('%H%M%S')}"))
 
-    # Phase 4: Milestone plan
+    # Phase 4: Milestone plan (short)
     blocks.append(_milestone_plan(goal, wd))
 
-    # Phase 5: Swarm research (12 specialized agents)
+    # Phase 5: Fast swarm (only 4 agents for speed)
     def _swarm():
         subtasks = [
-            f"ANALYZE project structure and identify all affected modules: {goal}",
-            f"BREAK DOWN into concrete milestones with file lists and dependencies: {goal}",
-            f"IDENTIFY all risks, edge cases, failure modes: {goal}",
-            f"MAP dependencies and integration points: {goal}",
-            f"DETECT conflicts and propose resolution strategies: {goal}",
-            f"OPTIMIZE implementation order for parallel execution: {goal}",
-            f"ESTIMATE complexity and time for each milestone: {goal}",
-            f"DESIGN rollback strategy for each phase: {goal}",
-            f"REVIEW codebase patterns for consistency: {goal}",
-            f"VALIDATE approach against security best practices: {goal}",
-            f"PLAN verification strategy for each change: {goal}",
-            f"DOCUMENT expected outcomes and success criteria: {goal}",
+            f"ANALYZE project and identify key files for: {goal}",
+            f"PLAN implementation steps with dependencies: {goal}",
+            f"IDENTIFY risks and edge cases: {goal}",
+            f"SUGGEST verification strategy: {goal}",
         ]
-        return run_swarm(cfg, subtasks, max_workers=12)
-    safe("Swarm Research (12 parallel agents)", _swarm)
+        return run_swarm(cfg, subtasks, max_workers=4)
+    safe("Swarm Research (4 agents)", _swarm)
 
     blocks.append("")
     blocks.append("[DIRECTIVE — DREAM ULTRA PRO]")
@@ -1175,57 +1154,30 @@ def control_plane(cfg: Config, goal: str) -> str:
 # ============================================================================
 
 def verification_plane(cfg: Config, messages: list[dict]) -> str:
-    """Final verification + evidence pack."""
+    """Fast verification + evidence pack."""
     from ..tools import REGISTRY
     from ..core.export import export
 
     wd = cfg.workdir
-    parts: list[str] = ["[DREAM VERIFICATION PLANE — ULTRA PRO]\n"]
+    parts: list[str] = ["[DREAM VERIFICATION]\n"]
 
     def safe(label: str, fn) -> None:
         try:
-            parts.append(f"### {label}\n{str(fn())[:3000]}")
+            parts.append(f"### {label}\n{str(fn())[:1500]}")
         except Exception as e:
             parts.append(f"### {label}\n(skipped: {e})")
 
-    # Parallel verification
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+    # Quick parallel verification (only 3 essential checks)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
         f1 = ex.submit(lambda: REGISTRY["secret_scan"].run(wd))
         f2 = ex.submit(lambda: REGISTRY["code_metrics"].run(wd))
-        f3 = ex.submit(lambda: REGISTRY["lint"].run(wd, path=".") if "lint" in REGISTRY else "lint not available")
-        f4 = ex.submit(lambda: _code_quality_baseline(wd))
-        f5 = ex.submit(lambda: _security_analysis(wd))
-        f6 = ex.submit(lambda: _dead_code_detection(wd))
-        f7 = ex.submit(lambda: _test_coverage_analysis(wd))
-        results = {
-            "Final Secret Scan": f1.result(),
-            "Final Code Metrics": f2.result(),
-            "Final Lint": f3.result(),
-            "Post-Change Quality": f4.result(),
-            "Final Security Analysis": f5.result(),
-            "Post-Change Dead Code": f6.result(),
-            "Test Coverage Check": f7.result(),
-        }
-        for name, out in results.items():
-            parts.append(f"### {name}\n{str(out)[:3000]}")
+        f3 = ex.submit(lambda: _code_quality_baseline(wd))
+        parts.append(f"### Secret Scan\n{str(f1.result())[:1500]}")
+        parts.append(f"### Code Metrics\n{str(f2.result())[:1500]}")
+        parts.append(f"### Quality Check\n{str(f3.result())[:1500]}")
 
-    # Evidence pack (hash-chained)
+    # Evidence pack (short)
     parts.append(_evidence_pack(messages, wd))
-
-    # Work journal
-    goal = ""
-    for m in messages:
-        content = m.get("content") or ""
-        if m.get("role") == "user" and not content.startswith("["):
-            goal = content[:200]
-            break
-    parts.append(_work_journal(goal, messages))
-
-    # Export conversation
-    try:
-        parts.append("### Conversation Export\n" + export(messages, wd, "md"))
-    except Exception:
-        pass
 
     return "\n\n".join(parts)
 
