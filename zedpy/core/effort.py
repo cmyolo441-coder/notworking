@@ -133,7 +133,7 @@ _MAX = Effort(
 
 _ULTRA = Effort(
     name="ultra", label="Ultra Thinking", multiplier=50,
-    max_steps=200, max_tokens=1_000_000, temperature=0.1,
+    max_steps=140, max_tokens=1_000_000, temperature=0.1,
     description=EFFORT_ULTRA_DESC,
     **_base_flags(plan=True, verify=True, research=True, diagnostic=True,
                   retries=5, parallel=True, swarm=True, swarmsize=3,
