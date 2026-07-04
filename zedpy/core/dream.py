@@ -1141,23 +1141,15 @@ def control_plane(cfg: Config, goal: str) -> str:
     # Phase 5: Milestone plan (DAG-based, short).
     blocks.append(_milestone_plan(goal, wd))
 
-    # Phase 6: Coordinated swarm research (sequential to avoid rate limits).
+    # Phase 6: Coordinated swarm research.
     def _swarm() -> str:
         subtasks = [
-            f"ANALYZE project structure and identify key files for: {goal}",
-            f"BREAK DOWN implementation into milestones with dependencies: {goal}",
-            f"IDENTIFY risks, edge cases and failure modes for: {goal}",
-            f"MAP dependencies and integration points for: {goal}",
-            f"DETECT potential conflicts/regressions for: {goal}",
-            f"OPTIMIZE the implementation approach for: {goal}",
-            f"ESTIMATE complexity and effort for: {goal}",
-            f"DESIGN a rollback strategy for: {goal}",
-            f"REVIEW existing patterns/conventions relevant to: {goal}",
-            f"VALIDATE security implications of: {goal}",
-            f"PLAN verification and test strategy for: {goal}",
-            f"DEFINE success criteria (definition of done) for: {goal}",
+            f"Quick analysis of project structure for: {goal}",
+            f"Key files and dependencies for: {goal}",
+            f"Main risks for: {goal}",
+            f"Implementation approach for: {goal}",
         ]
-        return run_swarm(cfg, subtasks, max_workers=3)
+        return run_swarm(cfg, subtasks, max_workers=2)
     safe("Swarm Research", _swarm)
 
     blocks.append("")
