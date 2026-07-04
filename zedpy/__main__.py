@@ -5,6 +5,7 @@
     python -m zedpy -p "read README"# one prompt, then exit (plain)
     python -m zedpy --yolo          # auto-approve actions
     python -m zedpy --workdir /path # work on another directory
+    python -m zedpy --update        # update BITTU from GitHub
 """
 from __future__ import annotations
 import argparse
@@ -55,7 +56,13 @@ def main() -> int:
     parser.add_argument("--yolo", action="store_true", help="Auto-approve all actions.")
     parser.add_argument("--plain", action="store_true", help="Use the plain REPL instead of the TUI.")
     parser.add_argument("-p", "--prompt", default="", help="One prompt, then exit (implies --plain).")
+    parser.add_argument("--update", action="store_true", help="Update BITTU from GitHub.")
     args = parser.parse_args()
+
+    # Handle --update flag
+    if args.update:
+        from .update import update
+        return update()
 
     cfg = Config.load()
     cfg.workdir = os.path.abspath(args.workdir)
