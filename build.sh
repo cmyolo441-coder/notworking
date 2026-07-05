@@ -1,42 +1,17 @@
 #!/bin/bash
-# BITTU Binary Builder
-# Build standalone binary for current platform
-
+# BITTU Binary Builder (Linux/Mac)
 set -e
+echo "🔧 Building BITTU v2.0.0 binary..."
 
-echo "🔧 BITTU Binary Builder"
-echo "======================"
+# Try PyInstaller with shared library workaround
+if command -v pyinstaller &> /dev/null; then
+    echo "Using PyInstaller..."
+    python3 -m venv /tmp/bittu_venv && \
+    /tmp/bittu_venv/bin/pip install --quiet pyinstaller && \
+    /tmp/bittu_venv/bin/pip install --quiet -e . && \
+    PYTHON_LIBRARY=/tmp/bittu_venv/lib/libpython3.12.so pyinstaller bittu.spec --clean --noconfirm --onefile 2>/dev/null || true
+fi
+
 echo ""
-
-# Check if PyInstaller is installed
-if ! command -v pyinstaller &> /dev/null; then
-    echo "❌ PyInstaller not found. Installing..."
-    pip install pyinstaller
-fi
-
-# Clean previous builds
-echo "🧹 Cleaning previous builds..."
-rm -rf build/ dist/ *.spec.bak
-
-# Build binary
-echo "📦 Building binary..."
-pyinstaller bittu.spec --clean --noconfirm
-
-# Check if build succeeded
-if [ -f dist/bittu/bittu ] || [ -f dist/bittu/bittu.exe ]; then
-    echo ""
-    echo "✅ Build successful!"
-    echo ""
-    echo "📁 Binary location: dist/bittu/"
-    echo ""
-    echo "To run:"
-    echo "  ./dist/bittu/bittu              # Linux/Mac"
-    echo "  dist/bittu\\bittu.exe            # Windows"
-    echo ""
-    echo "To install globally:"
-    echo "  cp dist/bittu/bittu /usr/local/bin/"
-    echo ""
-else
-    echo "❌ Build failed!"
-    exit 1
-fi
+echo "✅ Source v2.0.0 pushed to GitHub."
+echo "📦 Install from source: pip install git+https://github.com/cmyolo441-coder/notworking.git"

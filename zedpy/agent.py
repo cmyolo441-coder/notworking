@@ -79,6 +79,9 @@ class Agent:
         self._dream_stall = 0
         self._dream_last_state: tuple | None = None
         self._dream_mtime_snapshot: tuple | None = None
+        # Persistent task ledger (Dream Mode source of truth). None until a
+        # dream run creates/resumes it.
+        self._ledger: dict | None = None
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.cancel_event = threading.Event()
@@ -269,6 +272,7 @@ class Agent:
         self._dream_stall = 0
         self._dream_last_state = None
         self._dream_mtime_snapshot = None
+        self._ledger = None
         self._tests_cache = None
         self._fakes_cache = None
 
@@ -283,6 +287,23 @@ class Agent:
                                      dream.control_plane(self.cfg, user_input))
             except Exception:
                 pass
+            # Persistent task ledger — resume a crashed job (same goal) or build
+            # a fresh milestone list. This is the objective record of what work
+            # is promised vs. delivered; the loop won't finalize while items are
+            # pending. Fully wrapped so an offline/failed decompose never breaks
+            # the turn.
+            try:
+                from .core import ledger
+                self._ledger = ledger.resume_or_create(
+                    self.cfg.workdir, user_input, self.cfg)
+                self._append_history(
+                    "user",
+                    "[DREAM LEDGER] Mark each milestone done via the "
+                    "ledger_update tool ONLY when its REAL code exists and its "
+                    "tests pass. The loop will NOT stop while any are pending:\n"
+                    + ledger.pending_summary(self._ledger, limit=40))
+            except Exception:
+                self._ledger = None
         # GOAL MODE: inject execution contract
         elif getattr(self.effort, "goal_mode", False):
             self._append_history("user",
@@ -361,6 +382,14 @@ class Agent:
             # Effort gates: quality/security checks after changes
             if self._changed_files(tool_calls):
                 self._effort_gates()
+                # A new edit invalidates any prior clean verification pass, so
+                # the two required passes must be genuinely consecutive.
+                if getattr(self.effort, "dream_mode", False):
+                    try:
+                        from .core import ledger
+                        ledger.reset_verify_passes(self.cfg.workdir)
+                    except Exception:
+                        pass
 
             # Self-healing: if agent detected a failure, retry
             if getattr(self.effort, "self_healing", False):
@@ -496,28 +525,60 @@ class Agent:
         # 5. Tests (if a test command exists).
         tests_failing = self._tests_failing()
 
-        done = (blocking_fakes == 0) and (error_count == 0) and (not tests_failing)
+        heuristic_done = (blocking_fakes == 0) and (error_count == 0) and (not tests_failing)
+
+        # 6. Ledger gate — every promised milestone must be marked done. This is
+        # what stops the model from "quitting early" on a 40K-file job: the
+        # ledger is the objective record of promised-vs-delivered work.
+        ledger_data = None
+        ledger_clear = True
+        if self._ledger is not None:
+            try:
+                from .core import ledger
+                ledger_data = ledger.load(self.cfg.workdir) or self._ledger
+                ledger_clear = ledger.is_complete(ledger_data)
+            except Exception:
+                ledger_clear = True
 
         # Stall detection: only stop if state is IDENTICAL for DREAM_STALL_LIMIT
         # consecutive checks AND agent has not been calling tools.
-        state = (blocking_fakes, tests_failing, error_count, recent_tool_calls)
+        pending = (0 if ledger_data is None
+                   else self._ledger_pending(ledger_data))
+        state = (blocking_fakes, tests_failing, error_count, recent_tool_calls, pending)
         if state == self._dream_last_state:
             self._dream_stall += 1
         else:
             self._dream_stall = 0
             self._dream_last_state = state
 
-        if not done and self._dream_stall >= DREAM_STALL_LIMIT:
+        # Real completion requires ALL THREE: no blocking issues, ledger clear,
+        # and TWO independent verification passes clean.
+        if heuristic_done and ledger_clear:
+            both_ok, verify_errors = self._dream_double_verify()
+            if both_ok:
+                return True, ("(verified 2x: ledger complete, no fake code, "
+                              "no errors, tests pass)")
+            # Double-verify caught something the heuristic missed — feed the
+            # concrete issues back for self-heal and keep going.
+            self._append_history(
+                "user",
+                "[DREAM DOUBLE-VERIFY FAILED] The goal is NOT done. Fix these "
+                "concrete issues with real code, then continue — do NOT stop:\n"
+                + verify_errors)
+            return False, "double-verify failed: " + verify_errors[:200]
+
+        # Stall guard: bounded escape hatch so the loop can never run forever.
+        if self._dream_stall >= DREAM_STALL_LIMIT:
             return True, (
                 f"(no measurable progress after {DREAM_STALL_LIMIT} checks — "
                 f"fakes={blocking_fakes} errors={error_count} "
-                f"tests_failing={tests_failing})"
+                f"tests_failing={tests_failing} pending={pending})"
             )
 
-        if done:
-            return True, "(verified: no fake code, no errors, tests pass)"
-
         reasons = []
+        if not ledger_clear and ledger_data is not None:
+            from .core import ledger
+            reasons.append(ledger.pending_summary(ledger_data, limit=8))
         if blocking_fakes:
             reasons.append(f"{blocking_fakes} fake/stub finding(s) to rewrite")
         if tests_failing:
@@ -525,7 +586,81 @@ class Agent:
         if error_count:
             reasons.append(f"{error_count} recent tool error(s)")
         return False, "; ".join(reasons) or "goal not verified yet"
-        return False, "; ".join(reasons) or "goal not verified yet"
+
+    def _ledger_pending(self, ledger_data: dict) -> int:
+        """Pending milestone count (thin wrapper, import-safe)."""
+        try:
+            from .core import ledger
+            return ledger.pending_count(ledger_data)
+        except Exception:
+            return 0
+
+    def _dream_double_verify(self) -> tuple[bool, str]:
+        """Run the verification plane TWICE, independently. Both must be clean.
+
+        Between passes we drop the fake/test caches so the second pass genuinely
+        re-walks the tree instead of reusing pass-1 results. A clean double pass
+        bumps the ledger's verify_passes counter; any failure resets it, so the
+        two clean passes are always consecutive.
+        """
+        from .core import dream, ledger
+
+        def _one_pass() -> tuple[bool, str]:
+            try:
+                report = dream.verification_plane(self.cfg, self.history)
+            except Exception as e:
+                return False, f"verification_plane error: {e}"
+            problems = self._parse_verification(report)
+            return (not problems), "; ".join(problems)
+
+        ok1, err1 = _one_pass()
+        if not ok1:
+            try:
+                ledger.reset_verify_passes(self.cfg.workdir)
+            except Exception:
+                pass
+            return False, "pass-1: " + err1
+
+        # Force the second pass to be independent (no cached fake/test results).
+        self._fakes_cache = None
+        self._tests_cache = None
+
+        ok2, err2 = _one_pass()
+        if not ok2:
+            try:
+                ledger.reset_verify_passes(self.cfg.workdir)
+            except Exception:
+                pass
+            return False, "pass-2: " + err2
+
+        try:
+            ledger.bump_verify_passes(self.cfg.workdir)
+        except Exception:
+            pass
+        return True, ""
+
+    def _parse_verification(self, report: str) -> list[str]:
+        """Extract blocking problems from a verification_plane report.
+
+        Pure string/heuristic parse — no LLM. Fake findings, failing tests, and
+        syntax errors block; secret-scan hits are advisory (avoid false stops).
+        """
+        import re
+        problems: list[str] = []
+        text = report or ""
+
+        m = re.search(r"Fake/stub findings:\s*(\d+)", text)
+        if m and int(m.group(1)) > 0:
+            problems.append(f"{m.group(1)} fake/stub finding(s)")
+
+        if "SyntaxError" in text:
+            problems.append("syntax error(s) present")
+
+        # Independent test run (cache was just cleared by the caller between passes).
+        if self._tests_failing():
+            problems.append("tests are failing")
+
+        return problems
 
     def _count_blocking_fakes(self) -> int:
         """Run the fake-code engine and parse its machine-readable count.

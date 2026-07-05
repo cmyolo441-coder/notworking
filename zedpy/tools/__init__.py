@@ -12,6 +12,7 @@ from .advanced2 import DataTool, HttpRequest, RegexReplace, Scaffold, ShowDiff, 
 from .analyze import AnalyzeCode
 from .files import AppendFile, EditFile, ListDir, ReadFile, WriteFile
 from .git import GitTool
+from .ledger import LedgerUpdate
 from .memory import Recall, Remember
 from .search import FindFiles, Grep
 from .shell import RunShell
@@ -49,6 +50,7 @@ TOOLS = [
     DataTool(),         # #14
     RegexReplace(),     # #15
     Tree(),             # #16
+    LedgerUpdate(),     # Dream Mode never-stop task ledger
 ]
 
 REGISTRY = {t.name: t for t in TOOLS}
