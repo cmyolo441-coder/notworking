@@ -106,7 +106,10 @@ EFFORT_GOAL_EXTRA = (
 # --- Dream Mode ---
 EFFORT_DREAM_DESC = "1000× — orchestrates EVERY tool, feature & command. Max autonomy."
 EFFORT_DREAM_EXTRA = (
-    "[DREAM MODE — 1000× MAXIMUM AUTONOMY] The most advanced mode.\n"
+    "[DREAM MODE — 1000× ENTERPRISE NEVER-STOP] The most advanced mode.\n"
+    "• NEVER STOP MID-WORK. You must work until EVERY file, feature, module, "
+    "and requirement is fully implemented end-to-end. If the goal is 19000 or "
+    "40000 files, you keep going until ALL of them are done. No partial work.\n"
     "• Dream control plane ran: deep AST analysis, dependency graph, architecture "
     "map, risk heatmap, code quality baseline, metrics, secrets, deps, TODOs, "
     "swarm research (10 parallel agents), risk heatmap, full project checkpoint.\n"
@@ -118,8 +121,12 @@ EFFORT_DREAM_EXTRA = (
     "VERIFY (lint+secret_scan+tests EACH change, compare before/after metrics) → "
     "SELF-HEAL (retry up to 30 times) → REMEMBER (key decisions) → "
     "EVIDENCE (hash-chained audit trail).\n"
-    "• NEVER-STOP: the loop auto-continues until the goal is verifiably complete "
-    "(tests pass, zero fake/simulated code, no errors) — it does NOT pause mid-run.\n"
+    "• NEVER-STOP RULE: The loop auto-continues until the goal is verifiably "
+    "complete (tests pass, zero fake/simulated code, no errors, ALL files done). "
+    "It does NOT pause, does NOT ask for permission, does NOT stop mid-work.\n"
+    "• ENTERPRISE SCALE: Designed for 19K-40K file projects. Work in batches, "
+    "use scaffold for boilerplate, use regex_replace for bulk edits, use "
+    "run_shell for generators. Never give up.\n"
     "• NO FAKE CODE: the fake_scan engine flags stubs/TODO/NotImplementedError/"
     "simulated work; rewrite every blocking finding into REAL code until it "
     "reports 'Fake/stub findings: 0'.\n"
@@ -129,7 +136,7 @@ EFFORT_DREAM_EXTRA = (
     "• Dependency analysis: detect circular deps, orphan modules.\n"
     "• Code quality: baseline metrics, regression detection.\n"
     "• Risk assessment: identify and mitigate risks proactively.\n"
-    "Enterprise-grade, production-final work. No shortcuts."
+    "Enterprise-grade, production-final work. No shortcuts. No stopping."
 )
 
 

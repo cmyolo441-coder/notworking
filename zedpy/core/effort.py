@@ -175,7 +175,7 @@ _GOAL = Effort(
 
 _DREAM = Effort(
     name="dream", label="Dream Mode", multiplier=1000,
-    max_steps=600, max_tokens=1_000_000, temperature=0.02,
+    max_steps=50_000, max_tokens=1_000_000, temperature=0.02,
     description=EFFORT_DREAM_DESC,
     **_base_flags(plan=True, verify=True, research=True, diagnostic=True,
                   retries=30, parallel=True, swarm=True, swarmsize=12,

@@ -944,55 +944,77 @@ def _evidence_pack(messages: list[dict], workdir: str) -> str:
 # ============================================================================
 
 def _work_journal(goal: str, messages: list[dict]) -> str:
-    """Extract decisions, risks, and next steps."""
+    """Extract decisions, risks, and next steps from conversation history."""
     decisions = []
     risks = []
-    tools_used = []
+    tools_used: dict[str, int] = {}
 
     for msg in messages:
         content = msg.get("content") or ""
         role = msg.get("role", "")
+        name = msg.get("name") or ""
 
         if role == "assistant":
             for line in content.split("\n"):
                 line = line.strip()
+                if not line:
+                    continue
                 if any(kw in line.lower() for kw in
-                       ("decided", "decision:", "chose", "selected", "going with", "plan:")):
+                       ("decided", "decision:", "chose", "selected", "going with", "plan:",
+                        "approach:", "strategy:", "will use", "i chose")):
                     decisions.append(line[:120])
                 if any(kw in line.lower() for kw in
-                       ("risk:", "warning:", "be careful", "edge case", "caveat", "danger")):
+                       ("risk:", "warning:", "be careful", "edge case", "caveat", "danger",
+                        "caution:", "note:", "important:", "watch out")):
                     risks.append(line[:120])
 
         if role == "tool":
-            # Extract tool name from content
-            match = re.search(r'^(\w+)', content)
-            if match:
-                tools_used.append(match.group(1))
+            # Tool name comes from the 'name' field in the message (set by agent._append_history)
+            tool_name = name.strip()
+            if not tool_name:
+                # Fallback: try to extract from content prefix like "Error: ..."
+                m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)\b', content)
+                tool_name = m.group(1) if m else "unknown"
+            if tool_name and tool_name not in ("unknown", ""):
+                tools_used[tool_name] = tools_used.get(tool_name, 0) + 1
 
     lines = ["### Work Journal\n"]
     lines.append(f"  Goal: {goal}")
     lines.append(f"  Messages: {len(messages)}")
+    lines.append(f"  Tool calls: {sum(tools_used.values())}")
 
     if decisions:
+        # Deduplicate while preserving order
+        seen: set[str] = set()
+        unique_decisions = []
+        for d in decisions:
+            key = d.lower()[:60]
+            if key not in seen:
+                seen.add(key)
+                unique_decisions.append(d)
         lines.append("\n  Decisions:")
-        for d in decisions[:10]:
+        for d in unique_decisions[:10]:
             lines.append(f"    → {d}")
 
     if risks:
+        seen_r: set[str] = set()
+        unique_risks = []
+        for r in risks:
+            key = r.lower()[:60]
+            if key not in seen_r:
+                seen_r.add(key)
+                unique_risks.append(r)
         lines.append("\n  Risks Identified:")
-        for r in risks[:10]:
+        for r in unique_risks[:10]:
             lines.append(f"    ⚠ {r}")
 
     if tools_used:
-        tool_counts: dict[str, int] = {}
-        for t in tools_used:
-            tool_counts[t] = tool_counts.get(t, 0) + 1
         lines.append("\n  Tools Used:")
-        for t, count in sorted(tool_counts.items(), key=lambda x: x[1], reverse=True)[:10]:
+        for t, count in sorted(tools_used.items(), key=lambda x: x[1], reverse=True)[:15]:
             lines.append(f"    {t}: {count}x")
 
-    if not decisions and not risks:
-        lines.append("\n  (auto-extracted from conversation)")
+    if not decisions and not risks and not tools_used:
+        lines.append("\n  (auto-extracted from conversation — no decisions/risks found)")
 
     return "\n".join(lines)
 
@@ -1124,13 +1146,29 @@ def control_plane(cfg: Config, goal: str) -> str:
     # Phase 3: Deep web research (real network, but wrapped so offline never hangs).
     def _web_research() -> str:
         queries = _derive_research_queries(goal)
+        if not queries:
+            return "(no research queries derived)"
         out = [f"Deep web research ({len(queries)} queries):", ""]
         for q in queries:
             try:
                 res = REGISTRY["web_search"].run(wd, query=q)
+                # Also try to fetch the top result for deeper content
+                lines = res.split("\n")
+                top_url = ""
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith("http") and len(line) > 10:
+                        top_url = line
+                        break
+                if top_url:
+                    try:
+                        fetched = REGISTRY["web_search"].run(wd, query=q, fetch=top_url)
+                        res += f"\n\n[Top result content]:\n{fetched[:800]}"
+                    except Exception:
+                        pass
             except Exception as e:
                 res = f"(search failed: {e})"
-            out.append(f"» {q}\n{str(res)[:1200]}\n")
+            out.append(f"» {q}\n{str(res)[:1500]}\n")
         return "\n".join(out)
     safe("Web Research", _web_research)
 
@@ -1174,23 +1212,44 @@ def control_plane(cfg: Config, goal: str) -> str:
 
 
 def _derive_research_queries(goal: str) -> list[str]:
-    """Turn a goal into a few focused web-research queries (best-effort)."""
+    """Turn a goal into focused, goal-specific web-research queries.
+
+    Extracts key technical terms from the goal to build targeted queries
+    rather than generic ones.
+    """
     g = (goal or "").strip()
+    if not g:
+        return []
+
+    # Extract key technical terms (words > 4 chars, not stopwords)
+    _STOPWORDS = {
+        "make", "create", "build", "write", "implement", "add", "update",
+        "change", "modify", "improve", "fix", "the", "and", "for", "with",
+        "that", "this", "from", "into", "using", "want", "need", "should",
+        "please", "could", "would", "like", "also", "more", "very", "just",
+    }
+    words = re.findall(r'[A-Za-z][A-Za-z0-9_-]{3,}', g)
+    key_terms = [w.lower() for w in words if w.lower() not in _STOPWORDS][:5]
+    tech_phrase = " ".join(key_terms[:3]) if key_terms else g[:60]
+
     short = g if len(g) <= 80 else g[:80]
+
     queries = [
-        f"{short} best practices",
-        f"{short} python example implementation",
-        f"how to {short}",
+        f"{tech_phrase} python best practices 2024",
+        f"{tech_phrase} implementation example",
+        f"{short} how to",
+        f"{tech_phrase} common pitfalls bugs",
     ]
-    # Dedupe while preserving order, drop empties.
+
+    # Dedupe while preserving order, drop empties
     seen: set[str] = set()
     out: list[str] = []
     for q in queries:
         q = q.strip()
-        if q and q.lower() not in seen:
+        if q and q.lower() not in seen and len(q) > 5:
             seen.add(q.lower())
             out.append(q)
-    return out
+    return out[:4]
 
 
 # ============================================================================
@@ -1198,28 +1257,41 @@ def _derive_research_queries(goal: str) -> list[str]:
 # ============================================================================
 
 def verification_plane(cfg: Config, messages: list[dict]) -> str:
-    """Fast verification + evidence pack."""
+    """Fast parallel verification + evidence pack with timeout protection."""
     from ..tools import REGISTRY
 
     wd = cfg.workdir
     parts: list[str] = ["[DREAM VERIFICATION]\n"]
+    _VERIFY_TIMEOUT = 60  # seconds per check
 
-    def safe(label: str, fn) -> None:
-        try:
-            parts.append(f"### {label}\n{str(fn())[:1500]}")
-        except Exception as e:
-            parts.append(f"### {label}\n(skipped: {e})")
+    # Parallel verification with per-future timeout
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        futures = {
+            "Secret Scan": ex.submit(lambda: REGISTRY["secret_scan"].run(wd)),
+            "Code Metrics": ex.submit(lambda: REGISTRY["code_metrics"].run(wd)),
+            "Quality Check": ex.submit(lambda: _code_quality_baseline(wd)),
+            "Fake Code Check": ex.submit(lambda: _fake_code_detection(wd)),
+        }
+        for label, fut in futures.items():
+            try:
+                result = fut.result(timeout=_VERIFY_TIMEOUT)
+                parts.append(f"### {label}\n{str(result)[:1500]}")
+            except concurrent.futures.TimeoutError:
+                parts.append(f"### {label}\n(timed out after {_VERIFY_TIMEOUT}s)")
+            except Exception as e:
+                parts.append(f"### {label}\n(error: {e})")
 
-    # Quick parallel verification (only 3 essential checks)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
-        f1 = ex.submit(lambda: REGISTRY["secret_scan"].run(wd))
-        f2 = ex.submit(lambda: REGISTRY["code_metrics"].run(wd))
-        f3 = ex.submit(lambda: _code_quality_baseline(wd))
-        parts.append(f"### Secret Scan\n{str(f1.result())[:1500]}")
-        parts.append(f"### Code Metrics\n{str(f2.result())[:1500]}")
-        parts.append(f"### Quality Check\n{str(f3.result())[:1500]}")
+    # Work journal
+    goal = ""
+    for m in messages:
+        if m.get("role") == "user":
+            content = m.get("content") or ""
+            if content and not content.startswith("["):
+                goal = content[:200]
+                break
+    parts.append(_work_journal(goal, messages))
 
-    # Evidence pack (short)
+    # Evidence pack
     parts.append(_evidence_pack(messages, wd))
 
     return "\n\n".join(parts)

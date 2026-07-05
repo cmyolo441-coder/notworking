@@ -33,26 +33,25 @@ def stream_chat(cfg: Config, messages: list[dict], tools: list[dict] | None,
         payload["tools"] = tools
         payload["tool_choice"] = "auto"
 
-    req = urllib.request.Request(
-        cfg.base_url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {cfg.api_key}",
-            "User-Agent": "zedpy/1.0 (+https://opencode.ai)",
-            "Accept": "text/event-stream",
-        },
-        method="POST",
-    )
+    _HEADERS = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {cfg.api_key}",
+        "User-Agent": "zedpy/2.0 (+https://opencode.ai)",
+        "Accept": "text/event-stream",
+    }
 
-    full_text = ""
-    tool_parts: dict[int, dict] = {}
-    usage: dict | None = None
+    def _make_request() -> urllib.request.Request:
+        return urllib.request.Request(
+            cfg.base_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=_HEADERS,
+            method="POST",
+        )
 
-    cancelled = False
+    resp_handle = None
     for _retry in range(3):
         try:
-            resp_handle = urllib.request.urlopen(req, timeout=4000)
+            resp_handle = urllib.request.urlopen(_make_request(), timeout=4000)
             break
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", errors="replace")[:500]
@@ -60,16 +59,21 @@ def stream_chat(cfg: Config, messages: list[dict], tools: list[dict] | None,
                 old = payload.get("max_tokens", 0)
                 new = max(1024, int(old * 0.6))
                 payload["max_tokens"] = new
-                req = urllib.request.Request(
-                    cfg.base_url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers=req.headers,
-                    method="POST",
-                )
+                continue
+            raise
+        except urllib.error.URLError:
+            if _retry < 2:
+                import time as _t
+                _t.sleep(1.5 * (_retry + 1))
                 continue
             raise
     else:
         raise RuntimeError("Failed to connect after retries")
+
+    full_text = ""
+    tool_parts: dict[int, dict] = {}
+    usage: dict | None = None
+    cancelled = False
 
     with resp_handle as resp:
         for raw in resp:

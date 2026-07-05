@@ -26,7 +26,7 @@ from ..llm import LLMError
 from .constellation import constellation
 
 BRAND = "BITTU"
-VERSION = "v1.0.0"
+VERSION = "v2.0.0"
 MODES = ["Plan", "Build", "Chat"]
 SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
@@ -750,13 +750,16 @@ class BittuApp(App):
             if self._stream_delta_buf:
                 self._stream_text.append(self._stream_delta_buf, style="#d9d9d9")
                 self._stream_delta_buf = ""
-            follow = self._at_bottom()
             self._stream_widget.update(self._stream_text)
+            # If answer has a verification/evidence section (dream mode),
+            # append it as a separate message block.
             marker = "─" * 40
             if marker in answer:
-                extra = answer.split(marker, 1)[1]
-                self._add_msg(Text(marker + extra, style="#9e9e9e"))
-            elif follow:
+                idx = answer.index(marker)
+                extra = answer[idx:]
+                self._add_msg(Text(extra, style="#9e9e9e"))
+            follow = self._at_bottom()
+            if follow:
                 self.call_after_refresh(self._scroll_end)
             self._stream_started = False
         else:

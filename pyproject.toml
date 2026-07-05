@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bittu"
-version = "1.0.0"
+version = "2.0.0"
 description = "BITTU — Grok-style terminal AI agent with Dream Mode ULTRA PRO"
 readme = "README.md"
 license = {text = "MIT"}

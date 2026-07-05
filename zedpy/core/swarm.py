@@ -49,8 +49,10 @@ def run_swarm(
     """
     import os
     wd = getattr(cfg, "workdir", "")
-    if wd.startswith("/tmp") or os.environ.get("CI") or os.environ.get("PYTEST_CURRENT_TEST"):
-        return "(swarm skipped in test/CI environment)"
+    # Only skip in actual CI environments, not local /tmp workdirs
+    in_ci = bool(os.environ.get("CI") or os.environ.get("PYTEST_CURRENT_TEST"))
+    if in_ci:
+        return "(swarm skipped in CI/test environment)"
 
     llm = LLM(cfg)
     prompt = SPECIALISTS.get(specialist, SPECIALISTS["general"])

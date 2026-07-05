@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="bittu",
-    version="1.0.0",
+    version="2.0.0",
     description="BITTU — Grok-style terminal AI agent with Dream Mode ULTRA PRO",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",

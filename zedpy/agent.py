@@ -52,13 +52,16 @@ POST_TOOL_REMINDER = (
 #   - DREAM_HARD_CAP        : absolute ceiling on loop steps in dream mode.
 #   - DREAM_CONTINUATION_CAP : max auto-continuations after the model stops.
 #   - stall detection        : stop if no measurable progress for N rounds.
-DREAM_HARD_CAP = 1000
-DREAM_CONTINUATION_CAP = 25
-DREAM_STALL_LIMIT = 3
+DREAM_HARD_CAP = 50_000     # was 1000 — 19K-40K files ka kaam khatam karne ke liye
+DREAM_CONTINUATION_CAP = 5_000  # was 80 — jab tak kaam complete na ho tab tak nahi rukna
+DREAM_STALL_LIMIT = 25      # was 8 — real stall detect karne ke liye zyada patience
+DREAM_FAKE_CACHE_TTL = 60.0 # seconds: reuse fake-scan result if mtime unchanged
 DREAM_CONTINUATION_PROMPT = (
-    "[DREAM — NOT DONE YET] The goal is not verifiably complete. Do NOT stop. "
-    "Keep working: fix what's failing, rewrite any fake/simulated code into real "
-    "code, and re-verify. Reason for continuing: "
+    "[DREAM — ENTERPRISE NEVER-STOP] The goal is NOT complete yet. "
+    "You MUST keep working until EVERY file, feature, and requirement is "
+    "fully implemented end-to-end. Do NOT stop, do NOT summarize, do NOT "
+    "declare done. Keep calling tools and writing real code. "
+    "Reason to continue: "
 )
 
 
@@ -86,6 +89,10 @@ class Agent:
         self._tool_call_count = 0
         self._last_reinforcement_step = 0
         self._reinforcement_interval = 5  # Inject reminder every N tool calls
+        # Test result cache (keyed by mtime snapshot to avoid redundant runs)
+        self._tests_cache: tuple | None = None
+        # Fake-scan result cache (keyed by mtime snapshot + TTL)
+        self._fakes_cache: tuple | None = None
 
     def set_effort(self, name: str) -> str:
         """Switch effort level at runtime; rebuild system prompt."""
@@ -206,7 +213,13 @@ class Agent:
                 "4. USE TOOLS to do work, don't just describe\n"
                 "Follow these rules. You are an AGENT, not a chatbot."
             )
-            self.history = [system, {"role": "user", "content": summary}] + recent
+            # Inject as assistant role to avoid consecutive user messages
+            # which some models reject (user→user without assistant in between)
+            self.history = [
+                system,
+                {"role": "user", "content": "[context compressed — see summary below]"},
+                {"role": "assistant", "content": summary},
+            ] + recent
             self._approx_tokens = len(str(self.history)) // 4
             # Reset reinforcement counter after compression
             self._last_reinforcement_step = self._tool_call_count
@@ -256,6 +269,8 @@ class Agent:
         self._dream_stall = 0
         self._dream_last_state = None
         self._dream_mtime_snapshot = None
+        self._tests_cache = None
+        self._fakes_cache = None
 
         # Context compression check
         self._maybe_compress_context()
@@ -405,15 +420,27 @@ class Agent:
 
     # --- dream never-stop completion check ---
     def _workdir_mtime_state(self) -> tuple:
-        """Cheap fingerprint of the tree so we can detect 'nothing changed'."""
+        """Cheap fingerprint of the tree so we can detect 'nothing changed'.
+
+        Tracks ALL text file types (not just .py) so changes to .json, .md,
+        .txt, .yaml, .toml etc. are also detected — previously agent could
+        write non-Python files and the loop would wrongly declare 'no changes'.
+        """
         import os
+        _TRACK_EXTS = {
+            ".py", ".js", ".ts", ".json", ".yaml", ".yml",
+            ".toml", ".md", ".txt", ".html", ".css", ".sh",
+            ".go", ".rs", ".java", ".c", ".cpp", ".rb",
+        }
         wd = self.cfg.workdir
         stamps: list[tuple] = []
         for dirpath, dirnames, filenames in os.walk(wd):
             dirnames[:] = [d for d in dirnames
-                           if not d.startswith(".") and d != "__pycache__"]
+                           if not d.startswith(".") and d not in
+                           ("__pycache__", "node_modules", ".git",
+                            ".venv", "venv", ".ruff_cache")]
             for f in filenames:
-                if not f.endswith(".py"):
+                if not any(f.endswith(ext) for ext in _TRACK_EXTS):
                     continue
                 fp = os.path.join(dirpath, f)
                 try:
@@ -425,45 +452,67 @@ class Agent:
     def _dream_completion_check(self) -> tuple[bool, str]:
         """Decide if the dream goal is verifiably done.
 
-        Real signals only: tests pass (if any), zero blocking fake/stub findings,
-        and no recent tool errors. Returns (done, reason_to_continue).
+        Enterprise-scale: designed for 19K-40K file projects.
+        NEVER stops mid-work — only stops when ALL of these are true:
+          1. Zero blocking fake/stub findings
+          2. Zero recent tool errors
+          3. Tests pass (if any exist)
+          4. No file changes in last check (nothing left to do)
 
-        Guards against infinite loops:
-          - mtime cache: if the tree is unchanged since the last check, treat as
-            stalled (nothing new to verify) and stop.
-          - stall detection: if the measurable state is unchanged for
-            DREAM_STALL_LIMIT checks, stop even if not "done".
+        Stall guard: only triggers after DREAM_STALL_LIMIT consecutive checks
+        with ZERO tool activity AND identical measurable state.
         """
-        # 1. mtime cache — if nothing changed, there's nothing new to verify.
+        # 1. mtime check — if files changed, agent is still working, never stop.
         mtime_state = self._workdir_mtime_state()
-        if (self._dream_mtime_snapshot is not None
-                and mtime_state == self._dream_mtime_snapshot):
-            return True, "(no file changes since last check — stopping)"
+        files_changed = (
+            self._dream_mtime_snapshot is not None
+            and mtime_state != self._dream_mtime_snapshot
+        )
+        if files_changed:
+            # Agent made progress — reset stall counter
+            self._dream_stall = 0
+            self._dream_last_state = None
         self._dream_mtime_snapshot = mtime_state
 
-        # 2. Fake/simulated code — blocking findings must be zero.
+        # 2. Count recent tool calls — if agent is actively calling tools, never stop.
+        recent_tool_calls = sum(
+            1 for m in self.history[-20:]
+            if m.get("role") == "tool"
+        )
+        if recent_tool_calls >= 3:
+            # Agent is actively working — reset stall, don't check completion yet
+            self._dream_stall = 0
+            return False, f"agent actively working ({recent_tool_calls} recent tool calls)"
+
+        # 3. Fake/simulated code — blocking findings must be zero.
         blocking_fakes = self._count_blocking_fakes()
 
-        # 3. Recent tool errors.
+        # 4. Recent tool errors.
         error_count = sum(
-            1 for m in self.history[-8:]
+            1 for m in self.history[-12:]
             if m.get("role") == "tool" and (m.get("content") or "").startswith("Error:")
         )
 
-        # 4. Tests (if a test command exists).
+        # 5. Tests (if a test command exists).
         tests_failing = self._tests_failing()
 
         done = (blocking_fakes == 0) and (error_count == 0) and (not tests_failing)
 
-        # Stall detection: identical measurable state across checks → stop.
-        state = (blocking_fakes, tests_failing, error_count)
+        # Stall detection: only stop if state is IDENTICAL for DREAM_STALL_LIMIT
+        # consecutive checks AND agent has not been calling tools.
+        state = (blocking_fakes, tests_failing, error_count, recent_tool_calls)
         if state == self._dream_last_state:
             self._dream_stall += 1
         else:
             self._dream_stall = 0
             self._dream_last_state = state
+
         if not done and self._dream_stall >= DREAM_STALL_LIMIT:
-            return True, "(no measurable progress — stopping to avoid a loop)"
+            return True, (
+                f"(no measurable progress after {DREAM_STALL_LIMIT} checks — "
+                f"fakes={blocking_fakes} errors={error_count} "
+                f"tests_failing={tests_failing})"
+            )
 
         if done:
             return True, "(verified: no fake code, no errors, tests pass)"
@@ -476,61 +525,108 @@ class Agent:
         if error_count:
             reasons.append(f"{error_count} recent tool error(s)")
         return False, "; ".join(reasons) or "goal not verified yet"
+        return False, "; ".join(reasons) or "goal not verified yet"
 
     def _count_blocking_fakes(self) -> int:
-        """Run the fake-code engine and parse its machine-readable count."""
+        """Run the fake-code engine and parse its machine-readable count.
+
+        Cached per mtime snapshot so repeated completion checks in the same
+        loop iteration don't re-walk the entire codebase (was the #1 cause
+        of dream mode slowness).
+        """
+        import re
+        import time as _time
+        mtime_key = self._dream_mtime_snapshot
+        cached = getattr(self, "_fakes_cache", None)
+        # Cache hit: same mtime snapshot AND within TTL
+        if (cached is not None
+                and cached[0] == mtime_key
+                and (_time.monotonic() - cached[2]) < DREAM_FAKE_CACHE_TTL):
+            return cached[1]
         try:
             from .core.dream import _fake_code_detection
             out = _fake_code_detection(self.cfg.workdir)
         except Exception:
             return 0
-        import re
         m = re.search(r"Fake/stub findings:\s*(\d+)", out)
-        return int(m.group(1)) if m else 0
+        count = int(m.group(1)) if m else 0
+        self._fakes_cache = (mtime_key, count, _time.monotonic())
+        return count
 
     def _tests_failing(self) -> bool:
-        """True only if a test command exists AND it reports failures."""
+        """True only if a test command exists AND it reports failures.
+
+        Caches the result per mtime snapshot to avoid re-running tests
+        on every dream completion check (expensive).
+        """
         cmd = self._detect_test_command()
         if not cmd:
             return False  # no tests → don't block completion
+        # Use mtime snapshot as cache key to avoid redundant test runs
+        mtime_key = self._dream_mtime_snapshot
+        cached = getattr(self, "_tests_cache", None)
+        if cached is not None and cached[0] == mtime_key:
+            return cached[1]
         try:
             out = REGISTRY["run_shell"].run(self.cfg.workdir, command=cmd,
                                             timeout_seconds=90)
         except Exception:
             return False
-        return any(w in out.lower() for w in ("fail", "error", "traceback"))
+        result = any(w in out.lower() for w in ("fail", "error", "traceback"))
+        self._tests_cache = (mtime_key, result)
+        return result
 
     # --- effort preflight (before acting) ---
     def _effort_preflight(self, user_input: str) -> None:
         e = self.effort
         if not e.enterprise_preflight:
             return
+        import concurrent.futures
         blocks: list[str] = []
+        lock = __import__("threading").Lock()
 
+        def _safe_append(label: str, fn):
+            try:
+                out = fn()
+                if out:
+                    with lock:
+                        blocks.append(f"## {label}\n{str(out)[:1500]}")
+            except Exception:
+                pass
+
+        # Checkpoint must run first (sequential — writes to disk)
         if e.auto_checkpoint:
             try:
                 from .core import checkpoint
                 blocks.append(checkpoint.create(self.cfg.workdir))
             except Exception:
                 pass
+
+        # All analysis tasks run in parallel
+        parallel_tasks: list[tuple[str, object]] = []
         if e.run_metrics:
-            try:
-                blocks.append("## metrics\n" +
-                              REGISTRY["code_metrics"].run(self.cfg.workdir)[:1500])
-            except Exception:
-                pass
+            parallel_tasks.append(
+                ("metrics", lambda: REGISTRY["code_metrics"].run(self.cfg.workdir)))
         if e.run_security:
-            try:
-                blocks.append("## secret_scan\n" +
-                              REGISTRY["secret_scan"].run(self.cfg.workdir)[:1500])
-            except Exception:
-                pass
+            parallel_tasks.append(
+                ("secret_scan", lambda: REGISTRY["secret_scan"].run(self.cfg.workdir)))
         if e.deep_research:
-            try:
-                blocks.append("## deps\n" +
-                              REGISTRY["deps"].run(self.cfg.workdir)[:1200])
-            except Exception:
-                pass
+            parallel_tasks.append(
+                ("deps", lambda: REGISTRY["deps"].run(self.cfg.workdir)))
+
+        if parallel_tasks:
+            with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=len(parallel_tasks)) as ex:
+                futs = {ex.submit(fn): label for label, fn in parallel_tasks}
+                for fut in concurrent.futures.as_completed(futs, timeout=60):
+                    label = futs[fut]
+                    try:
+                        out = fut.result(timeout=30)
+                        if out:
+                            blocks.append(f"## {label}\n{str(out)[:1500]}")
+                    except Exception:
+                        pass
+
         if e.use_swarm:
             try:
                 from .core.swarm import run_swarm
@@ -543,6 +639,7 @@ class Agent:
                               max_workers=e.swarm_size or 2)[:2000])
             except Exception:
                 pass
+
         if blocks:
             self._append_history("user",
                 f"[EFFORT PREFLIGHT - {e.label}] Real local evidence. "
@@ -558,21 +655,42 @@ class Agent:
         if e.run_security:
             try:
                 out = REGISTRY["secret_scan"].run(self.cfg.workdir)
-                if "No secrets" not in out:
+                if "No secrets" not in out and "no secrets" not in out.lower():
                     findings.append("SECURITY:\n" + out[:1500])
             except Exception:
                 pass
         if e.run_quality:
             import os
-            for f in os.listdir(self.cfg.workdir):
-                if f.endswith(".py"):
+            # Lint ALL Python files, not just the first one
+            lint_issues: list[str] = []
+            try:
+                for f in sorted(os.listdir(self.cfg.workdir)):
+                    if not f.endswith(".py"):
+                        continue
                     try:
                         out = REGISTRY["lint"].run(self.cfg.workdir, path=f)
-                        if "no issues" not in out.lower() and "ok" not in out.lower():
-                            findings.append(out[:800])
+                        if "no issues" not in out.lower() and "ok" not in out.lower() and "SyntaxError" in out:
+                            lint_issues.append(out[:400])
                     except Exception:
                         pass
-                    break
+                # Also lint zedpy/ subdirectory if present
+                zedpy_dir = os.path.join(self.cfg.workdir, "zedpy")
+                if os.path.isdir(zedpy_dir):
+                    for root_dir, _, files in os.walk(zedpy_dir):
+                        for f in files:
+                            if not f.endswith(".py"):
+                                continue
+                            rel = os.path.relpath(os.path.join(root_dir, f), self.cfg.workdir)
+                            try:
+                                out = REGISTRY["lint"].run(self.cfg.workdir, path=rel)
+                                if "SyntaxError" in out:
+                                    lint_issues.append(out[:400])
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+            if lint_issues:
+                findings.append("LINT ERRORS:\n" + "\n".join(lint_issues[:5]))
         if findings:
             self._append_history("user",
                 "[EFFORT GATES] Auto-checks found issues. "

@@ -413,9 +413,10 @@ def _dream_ultra(app, arg: str) -> str:
     if fast_model in MODEL_PROFILES:
         app.cfg.apply_profile(fast_model)
 
-    # Enable all advanced features
-    app.cfg.plan_mode = True
+    # Enable all advanced features including auto-approve (dream mode requires it)
+    app.cfg.plan_mode = False   # Dream mode handles planning internally
     app.cfg.auto_test = True
+    app.cfg.auto_approve = True  # Dream mode is fully autonomous
 
     # Rebuild agent with new settings
     if hasattr(app, 'agent'):
@@ -467,7 +468,31 @@ def _dream_ultra(app, arg: str) -> str:
             f"Type your goal to start DREAM MODE ULTRA PRO!")
 
 
-# --- Registry ---------------------------------------------------------------
+def _stats(app, arg: str) -> str:
+    """Show LLM client stats including cache hit rate."""
+    from .llm.client import get_cache_stats
+    agent_stats = app.agent.stats()
+    cache = get_cache_stats()
+    return (
+        f"Agent Stats:\n"
+        f"  Input tokens : {agent_stats['input_tokens']}\n"
+        f"  Output tokens: {agent_stats['output_tokens']}\n"
+        f"  Total tokens : {agent_stats['input_tokens'] + agent_stats['output_tokens']}\n"
+        f"  Messages     : {agent_stats['messages']}\n"
+        f"\nLLM Cache:\n"
+        f"  Hits  : {cache['hits']}\n"
+        f"  Misses: {cache['misses']}\n"
+        f"  Rate  : {cache['hit_rate']}\n"
+        f"  Size  : {cache['size']} entries"
+    )
+
+
+def _clear_cache(app, arg: str) -> str:
+    """Clear the LLM response cache."""
+    from .llm.client import clear_cache
+    clear_cache()
+    return "LLM cache cleared."
+
 COMMANDS: list[SlashCommand] = [
     SlashCommand("/help",   "Show all commands",                     _help),
     SlashCommand("/init",   "Create a BITTU.md project guide",       _init),
@@ -512,6 +537,8 @@ COMMANDS: list[SlashCommand] = [
     SlashCommand("/dream",          "1000× — orchestrate EVERYTHING", _dream),
     SlashCommand("/dream-fast",     "Dream Mode + auto fast model",  _dream_fast),
     SlashCommand("/dream-ultra",    "Dream Mode ULTRA PRO",          _dream_ultra),
+    SlashCommand("/stats",          "LLM cache + token stats",       _stats),
+    SlashCommand("/clear-cache",    "Clear LLM response cache",      _clear_cache),
     SlashCommand("/quit",           "Exit BITTU",                    _quit),
 ]
 
