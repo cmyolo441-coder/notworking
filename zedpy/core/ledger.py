@@ -1,12 +1,14 @@
-"""Persistent Dream-Mode task ledger — the never-stop engine's source of truth.
+"""Persistent Dream-Mode task ledger — the resumable execution source of truth.
 
 Dream Mode ka asli problem: model beech me tool-calls band kar deta tha aur loop
 "done" maan leta tha. Ledger isko fix karta hai — goal ko concrete milestones me
-tod kar `.zedpy/dream_ledger.json` me save karta hai. Loop tab tak nahi rukta jab
-tak har pending milestone `done` na ho AND double-verify pass na ho.
+tod kar `.zedpy/dream_ledger.json` me save karta hai. Loop tab tak final success
+claim nahi karta jab tak pending milestones `done` na hon और double-verify pass न हो;
+hard caps, cancellation और stall guards फिर भी हमेशा लागू रहते हैं.
 
-Crash/restart safe: 40K-file job beech me rukey to same goal par `resume_or_create`
-purana ledger wapas load kar deta hai (goal_hash match) — kaam wahi se continue.
+Crash/restart safe: large file jobs बीच में रुकें तो same goal पर `resume_or_create`
+purana ledger wapas load kar deta hai (goal_hash match) — kaam wahi se continue,
+लेकिन runtime bounded और user-cancellable रहता है.
 
 Design notes:
   - save() atomic hai (temp file + os.replace) — crash mid-write par corruption nahi.
@@ -104,10 +106,10 @@ def create(workdir: str, goal: str, milestones: list[str]) -> dict:
 
 
 def resume_or_create(workdir: str, goal: str, cfg=None) -> dict:
-    """Main entry: resume an existing ledger for the same goal, else build one.
+    """Resume an existing ledger for the same goal, otherwise build one.
 
-    This is how a crashed 40K-file job continues — same goal → same goal_hash →
-    the on-disk milestones (with their done/pending status) come straight back.
+    A restarted large job keeps the same goal hash and milestone state. The
+    on-disk record is resumable evidence, not a license for an infinite loop.
     """
     existing = load(workdir)
     if existing is not None and existing.get("goal_hash") == _goal_hash(goal):

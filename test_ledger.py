@@ -2,7 +2,7 @@
 
 No LLM / API key needed — sets PYTEST_CURRENT_TEST so the swarm decomposer
 no-ops and the ledger falls back to its deterministic heuristic. Verifies the
-never-stop engine's new backbone:
+bounded, resumable engine's new backbone:
   - ledger create/load/resume + atomic save
   - milestone status math (pending_count / is_complete)
   - verify-pass counter round-trips through disk

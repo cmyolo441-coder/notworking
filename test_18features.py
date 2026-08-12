@@ -15,7 +15,7 @@ def check(name, ok, detail=""):
 
 def seed(ws):
     """Seed test files with a credential-like pattern for secret_scan testing."""
-    token = os.environ.get("TEST_SECRET_SEED", "dGhpc0lzQVJlYWxTZWNyZXRLZXk")
+    token = os.environ.get("TEST_SECRET_SEED", "supersecret123")
     open(os.path.join(ws, "app.py"), "w").write(
         f'import os, sys, json\nAPP_AUTH_TOKEN = "{token}"\n'
         'def add(a, b):\n    return a + b  # TODO: validate inputs\n')

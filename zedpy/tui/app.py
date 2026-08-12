@@ -67,95 +67,118 @@ class BittuApp(App):
 
     CSS = """
     Screen {
-        background: #0a0a0a;
-        color: #d0d0d0;
+        background: #080d18;
+        color: #dce7f5;
         layout: vertical;
     }
 
-    /* Center hero (constellation + brand) fills the space above the prompt. */
+    #topbar {
+        height: 2;
+        background: #0f1a2c;
+        border-bottom: solid #1e3854;
+        padding: 0 3;
+        color: #8ea8c6;
+        content-align: left middle;
+    }
+    #topbar-title { color: #f2b35a; text-style: bold; }
+    #topbar-hint { color: #7189a7; padding: 0 0 0 2; }
+
     #hero {
         height: 1fr;
         align: center middle;
         content-align: center middle;
+        background: #080d18;
     }
-    #logo { width: auto; height: auto; content-align: center middle; }
+    #logo { width: auto; height: auto; content-align: center middle; color: #f2b35a; }
+    #tagline { width: auto; height: 1; color: #6d87a6; content-align: center middle; }
 
-    /* Scrollable transcript (hidden until first message). */
     #transcript {
         height: 1fr;
-        background: #0a0a0a;
-        border: none;
+        background: #0b1322;
+        border: round #1e3854;
+        margin: 1 3 0 3;
         padding: 1 2;
         display: none;
         overflow-y: scroll;
         scrollbar-size-vertical: 1;
-        scrollbar-color: #e8a13a;
-        scrollbar-color-hover: #f0b050;
-        scrollbar-background: #1a1a1a;
+        scrollbar-color: #f2b35a;
+        scrollbar-color-hover: #ffd07a;
+        scrollbar-background: #111d31;
     }
-    /* Each transcript line/message is its own widget so streaming updates
-       one widget in place (no duplicate re-writes that break scrolling). */
-    #transcript > .msg { height: auto; width: 100%; margin: 0 0 1 0; }
+    #transcript > .msg {
+        height: auto;
+        width: 100%;
+        margin: 0 0 1 0;
+        padding: 0 1;
+    }
 
-
-
-    /* Prompt box — amber label + placeholder, like the reference. */
     #promptbox {
         height: auto;
-        background: #141414;
-        margin: 0 6;
+        background: #101d31;
+        border: round #2b5273;
+        margin: 1 3 0 3;
         padding: 1 2;
     }
     #promptrow { height: auto; layout: horizontal; }
     #modelabel {
         width: auto;
-        color: #e8a13a;
+        color: #f2b35a;
         text-style: bold;
         padding: 0 2 0 0;
     }
     #prompt {
         width: 1fr;
-        background: #141414;
+        background: #101d31;
         border: none;
-        color: #d0d0d0;
+        color: #f2f6fb;
         padding: 0;
     }
     #prompt:focus { border: none; }
+    #prompt.-disabled { color: #60758f; }
 
-    /* Status line under the prompt box. */
     #status {
         height: 1;
-        background: #1a1a1a;
-        margin: 0 6;
+        background: #0f1a2c;
+        margin: 0 3;
         padding: 0 2;
-        color: #808080;
+        color: #7892b1;
     }
 
-    /* Slash-command dropdown. */
     #palette {
         height: auto;
-        max-height: 12;
-        background: #161616;
-        margin: 0 6;
-        padding: 0 2;
-        color: #b0b0b0;
+        max-height: 22;
+        background: #101d31;
+        border: round #2b5273;
+        margin: 0 3;
+        padding: 1 2;
+        color: #aec1d7;
         display: none;
     }
 
-    /* Bottom footer: cwd left, version right. */
+    #telemetry {
+        height: 1;
+        background: #0b1728;
+        margin: 0 3;
+        padding: 0 2;
+        color: #7892b1;
+        border-top: solid #17334f;
+    }
+
     #footer {
         height: 1;
         layout: horizontal;
-        padding: 0 2;
-        color: #5a5a5a;
+        padding: 0 3;
+        color: #526984;
     }
     #cwd { width: 1fr; }
     #version { width: auto; content-align: right middle; }
+
     """
 
     BINDINGS = [
         Binding("tab", "cycle_mode", "modes", show=False),
         Binding("ctrl+c", "stop", "stop", show=False),
+        Binding("ctrl+space", "focus_prompt", "focus prompt", show=False),
         Binding("ctrl+l", "clear_convo", "clear", show=False),
         Binding("escape", "stop", "stop", show=False),
         Binding("pageup", "palette_up", "prev command", show=False),
@@ -195,6 +218,7 @@ class BittuApp(App):
         # Slash-palette navigation state.
         self._palette_matches: list = []
         self._palette_index: int = 0
+        self._palette_query: str = ""
         # Model selector state
         self._model_selector_active: bool = False
         self._model_selector_index: int = 0
@@ -211,11 +235,18 @@ class BittuApp(App):
         self._spin_idx: int = 0
         self._spin_timer = None
         self._work_start: float = 0.0
+        self._worker_thread: threading.Thread | None = None
+        self._closing: bool = False
+        self._web_source_count: int = 0
 
     # --- layout -----------------------------------------------------------
     def compose(self) -> ComposeResult:
+        with Container(id="topbar"):
+            yield Static(f"{BRAND}  /  autonomous coding workspace", id="topbar-title")
+            yield Static("tab modes · / commands · esc stop", id="topbar-hint")
         with Container(id="hero"):
             yield Static(self._logo(), id="logo")
+            yield Static("Build deliberately. Inspect everything. Ship real code.", id="tagline")
         yield VerticalScroll(id="transcript")
         yield Static("", id="palette")
         with Vertical(id="promptbox"):
@@ -223,18 +254,31 @@ class BittuApp(App):
                 yield Static(self._mode_name(), id="modelabel")
                 yield PasteInput(placeholder="What are we building?", id="prompt")
         yield Static(self._status_text(), id="status")
+        yield Static(self._telemetry_text(), id="telemetry")
         with Container(id="footer"):
             yield Static(self._cwd_text(), id="cwd")
             yield Static("esc stop · enter send · ^k/^j scroll · " + VERSION, id="version")
 
-    def on_mount(self) -> None:
-        self.query_one("#prompt", PasteInput).focus()
-        # Start spinner timer (ticks every 120ms).
-        self._spin_timer = self.set_interval(0.12, self._tick_spinner)
-        # Wire up agent callbacks for TUI mode.
+    def _wire_agent_callbacks(self) -> None:
+        """Attach callbacks after every Agent rebuild (model/workdir/reset/resume)."""
         self.agent._approve_cb = self._approve_tool
         self.agent._tool_cb = self._show_tool_call
         self.agent._tool_result_cb = self._show_tool_result
+
+    def on_mount(self) -> None:
+        self._closing = False
+        self.query_one("#prompt", PasteInput).focus()
+        self._spin_timer = self.set_interval(0.12, self._tick_spinner)
+        self._wire_agent_callbacks()
+
+    def on_unmount(self) -> None:
+        """Stop background work before Textual releases its event loop."""
+        self._closing = True
+        self.agent.cancel_event.set()
+        thread = self._worker_thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=1.0)
+        self._worker_thread = None
 
     # --- rendering helpers ------------------------------------------------
     def _logo(self) -> Text:
@@ -284,6 +328,29 @@ class BittuApp(App):
             t.append("YOLO", style="#e8a13a bold")
         return t
 
+    def _telemetry_text(self) -> Text:
+        stats = self.agent.stats() if hasattr(self, "agent") else {}
+        exact_in = int(stats.get("input_tokens", 0) or 0)
+        exact_out = int(stats.get("output_tokens", 0) or 0)
+        live_in = int(stats.get("live_input_tokens", 0) or 0)
+        live_out = int(stats.get("live_output_tokens", 0) or 0)
+        requests = int(stats.get("requests", 0) or 0)
+        tools = int(stats.get("tool_calls", 0) or 0)
+        step = int(stats.get("current_step", 0) or 0)
+        latency = float(stats.get("latency_ms", 0.0) or 0.0)
+        t = Text("  TELEMETRY  ", style="#f2b35a bold")
+        t.append(f"in {exact_in:,}  out {exact_out:,}", style="#c2d4e8")
+        if self.busy:
+            t.append(f"  live~in {live_in:,}  live~out {live_out:,}", style="#6fe3b1")
+        t.append(f"  req {requests}  tools {tools}", style="#7892b1")
+        if self.busy and step:
+            t.append(f"  step {step}", style="#e8a13a")
+        elif latency:
+            t.append(f"  last {latency/1000:.2f}s", style="#7892b1")
+        if self._web_source_count:
+            t.append(f"  web {self._web_source_count} refs", style="#78c8ff")
+        return t
+
     def _cwd_text(self) -> str:
         home = os.path.expanduser("~")
         p = self.cfg.workdir
@@ -293,19 +360,42 @@ class BittuApp(App):
 
     def refresh_status(self) -> None:
         self.query_one("#status", Static).update(self._status_text())
-        self.query_one("#modelabel", Static).update(self._mode_name())
+        self.query_one("#telemetry", Static).update(self._telemetry_text())
+        mode = self._mode_name()
+        self.query_one("#modelabel", Static).update(mode)
+        self.query_one("#prompt", PasteInput).placeholder = {
+            "Plan": "What are we planning?",
+            "Build": "What are we building?",
+            "Chat": "Ask BITTU anything…",
+        }.get(mode, "What are we building?")
         self.query_one("#cwd", Static).update(self._cwd_text())
 
     # --- agent callbacks (TUI mode) --------------------------------------
     def _approve_tool(self, name: str, args: dict) -> bool:
-        """TUI me tool approval — auto-approve (yolo) ya config ke hisaab se.
+        """Approve read-only tools automatically; require explicit YOLO for mutations.
 
-        Interactive stdin approval TUI me kaam nahi karta, isliye yahan
-        auto-approve logic chalta hai. User --yolo nahi de to bhi mutating
-        tools (write/edit/shell) chalenge — sirf BLOCKED commands shell tool
-        khud rokta hai.
+        The old UI silently approved every write/shell/HTTP operation, which made
+        the visible approval flag meaningless. A non-YOLO TUI now remains safe
+        by default and explains the exact opt-in needed in the transcript.
         """
-        return True
+        read_only = {
+            "read_file", "list_dir", "grep", "find_files", "tree", "code_metrics",
+            "fuzzy_find", "lint", "deps", "secret_scan", "todo_scan", "fake_scan",
+            "show_diff", "data_tool",
+        }
+        git_action = str(args.get("action", "")).lower()
+        git_args = str(args.get("args", "")).strip()
+        git_read_only = name == "git" and (
+            git_action in {"status", "diff", "log", "show"}
+            or (git_action == "branch" and not any(flag in git_args.split() for flag in {"-d", "-D", "--delete", "--move", "-m", "-M", "--edit-description"}))
+        )
+        if name in read_only or git_read_only or self.cfg.auto_approve or self.cfg.yolo_mode:
+            return True
+        self.call_from_thread(
+            self.log_system,
+            f"Approval required for {name}. Set ZEDPY_AUTO_APPROVE=true to enable mutating tools.",
+        )
+        return False
 
     def _show_tool_call(self, text: str) -> None:
         """Agent jab tool chalaye to transcript me dikhao."""
@@ -321,6 +411,10 @@ class BittuApp(App):
         self.call_from_thread(self.log_tool_result, name, shown)
 
     def log_tool_result(self, name: str, result: str) -> None:
+        if name == "web_search":
+            import re
+            self._web_source_count = max(self._web_source_count, len(re.findall(r"^\[\d+\] ", result, re.MULTILINE)))
+            self.refresh_status()
         self._add_msg(Text(f"  ✓ {name} →", style="#e8a13a").append(
             f" {result[:300]}" if len(result) > 300 else f" {result}", style="#808080"))
 
@@ -420,47 +514,63 @@ class BittuApp(App):
 
     # --- slash-command palette (PgUp/PgDown navigable) --------------------
     def _update_palette(self, value: str) -> None:
-        # Don't update palette if model selector is active
+        """Update the compact command palette from the current prompt text.
+
+        Only a command prefix is considered a palette query.  Once an argument
+        is present, normal command dispatch owns the input and the dropdown is
+        hidden.  Matching is deliberately palette-scoped: real tools such as
+        web search, fetch, telemetry, indexing, and scans remain available when
+        explicitly typed but are not presented as the primary UX.
+        """
         if self._model_selector_active:
             return
         palette = self.query_one("#palette", Static)
-        # Show all commands when just "/" is typed
-        if value == "/":
-            self._palette_matches = list(cmds.COMMANDS)
-            self._palette_index = 0
+        if value.startswith("/") and " " not in value:
+            self._palette_query = value
+            matches = cmds.match(value, palette=True)
+            self._palette_matches = matches
+            if self._palette_index >= len(matches):
+                self._palette_index = 0
             self._render_palette()
             palette.styles.display = "block"
             return
-        if value.startswith("/") and " " not in value:
-            matches = cmds.match(value)
-            if matches:
-                self._palette_matches = matches
-                if self._palette_index >= len(matches):
-                    self._palette_index = 0
-                self._render_palette()
-                palette.styles.display = "block"
-                return
+        self._palette_query = ""
         self._palette_matches = []
         self._palette_index = 0
         palette.styles.display = "none"
 
     def _render_palette(self) -> None:
-        """Draw the dropdown, highlighting the currently selected row."""
+        """Draw grouped rows, live query state, and the current selection."""
         palette = self.query_one("#palette", Static)
         t = Text()
-        t.append("═══ COMMANDS ═══  ", style="#e8a13a bold")
-        t.append("(↑/↓ PgUp/PgDn navigate · Enter/Tab select · Esc cancel)\n", style="#595959")
+        query = self._palette_query or "/"
+        t.append("  COMMAND PALETTE  ", style="#e8a13a bold")
+        t.append(f"{query}\n", style="#c2d4e8 bold")
+        t.append("  PgUp/PgDown move · Enter/Tab choose · Esc close\n", style="#7189a7")
 
-        for i, c in enumerate(self._palette_matches):
+        if not self._palette_matches:
+            t.append("\n  No useful controls match this prefix.\n", style="#9e9e9e")
+            t.append("  Type /help for the full explicit command registry.\n", style="#7189a7")
+            palette.update(t)
+            return
+
+        current_category = None
+        for i, command in enumerate(self._palette_matches):
+            category = getattr(command, "category", "GENERAL")
+            if category != current_category:
+                if current_category is not None:
+                    t.append("\n")
+                t.append(f"  {category}\n", style="#78c8ff bold")
+                current_category = category
             selected = (i == self._palette_index)
             if selected:
                 t.append("  ▶ ", style="#e8a13a bold")
-                t.append(f"{c.name:<16}", style="black on #e8a13a bold")
-                t.append(f" {c.summary}\n", style="white")
+                t.append(f"{command.name:<18}", style="black on #e8a13a bold")
+                t.append(f" {command.summary}\n", style="white")
             else:
                 t.append("    ")
-                t.append(f"{c.name:<16}", style="#e8a13a")
-                t.append(f" {c.summary}\n", style="#9e9e9e")
+                t.append(f"{command.name:<18}", style="#e8a13a")
+                t.append(f" {command.summary}\n", style="#9e9e9e")
         palette.update(t)
 
     def action_palette_up(self) -> None:
@@ -484,6 +594,7 @@ class BittuApp(App):
             inp.value = chosen.name + " "
             inp.cursor_position = len(inp.value)
             self._palette_matches = []
+            self._palette_query = ""
             self.query_one("#palette", Static).styles.display = "none"
             return True
         return False
@@ -582,12 +693,19 @@ class BittuApp(App):
             name, profile = self._model_selector_items[self._model_selector_index]
             self.cfg.apply_profile(name)
             self.agent = Agent(self.cfg)  # Rebuild agent with new config
+            self._wire_agent_callbacks()
             self._model_selector_active = False
             self.query_one("#palette", Static).styles.display = "none"
             self.refresh_status()
             self.log_system(f"Model → {profile.model} ({name})")
 
     # --- Esc / Ctrl+C: stop a running agent turn ----------------------------
+    def action_focus_prompt(self) -> None:
+        """Return focus to the prompt from any transcript/palette state."""
+        if self._closing:
+            return
+        self.query_one("#prompt", PasteInput).focus()
+
     def action_stop(self) -> None:
         if self.busy:
             self.agent.cancel_event.set()
@@ -599,8 +717,9 @@ class BittuApp(App):
                 self.query_one("#palette", Static).styles.display = "none"
                 return
             # Palette khula ho to band karo.
-            if self._palette_matches:
+            if self._palette_matches or self._palette_query:
                 self._palette_matches = []
+                self._palette_query = ""
                 self.query_one("#palette", Static).styles.display = "none"
 
     # --- events -----------------------------------------------------------
@@ -687,8 +806,13 @@ class BittuApp(App):
 
     # --- agent execution (threaded so UI stays responsive) ----------------
     def _run_agent_async(self, text: str) -> None:
+        if self._closing:
+            return
+        self.agent.cancel_event.clear()
         self.busy = True
         self._work_start = time.monotonic()
+        # Web references are scoped to the current turn, not leaked from a prior goal.
+        self._web_source_count = 0
         self.log_tool("thinking…")
         self._stream_started = False
         self._stream_text = None
@@ -709,9 +833,11 @@ class BittuApp(App):
                 answer = f"[LLM error] {e}"
             except Exception as e:  # noqa
                 answer = f"[error] {e}"
-            self.call_from_thread(self._finish, answer)
+            if not self._closing:
+                self.call_from_thread(self._finish, answer)
 
-        threading.Thread(target=worker, daemon=True).start()
+        self._worker_thread = threading.Thread(target=worker, name="bittu-agent", daemon=True)
+        self._worker_thread.start()
 
     def _stream_delta(self, delta: str) -> None:
         """Buffer streaming deltas and update ONE widget in place.
@@ -744,6 +870,8 @@ class BittuApp(App):
         self.refresh_status()
 
     def _finish(self, answer: str) -> None:
+        if self._closing:
+            return
         self.busy = False
         if getattr(self, "_stream_started", False):
             # Flush any remaining buffered tokens into the same widget.
@@ -768,9 +896,11 @@ class BittuApp(App):
         self.session.messages = self.agent.history
         try:
             self.session.save()
-        except Exception:
-            pass
+        except OSError as exc:
+            self.log_system(f"Session save failed: {exc}")
         # F7 — refresh token count + stop spinner.
+        self._worker_thread = None
+        self._work_start = 0.0
         self.refresh_status()
 
     def resume_session(self, which: str) -> str:  # F1
@@ -779,7 +909,9 @@ class BittuApp(App):
             return f"Session not found: {which}"
         self.session = sess
         self.agent = Agent(self.cfg)
-        self.agent.history = sess.messages
+        self._wire_agent_callbacks()
+        self.agent.history = list(sess.messages)
+        self.agent._approx_tokens = len(str(self.agent.history)) // 4
         self.agent._auto_context_done = True
         # Replay transcript.
         try:
@@ -822,6 +954,11 @@ class BittuApp(App):
 
     def reset_conversation(self) -> None:
         self.agent = Agent(self.cfg)
+        self._wire_agent_callbacks()
+        self.session = Session.new(self.cfg.model, self.cfg.workdir)
+        self._stream_started = False
+        self._stream_text = None
+        self._stream_widget = None
         try:
             self._transcript().remove_children()
         except Exception:
@@ -833,6 +970,8 @@ class BittuApp(App):
             return f"Not a directory: {path}"
         self.cfg.workdir = p
         self.agent = Agent(self.cfg)
+        self._wire_agent_callbacks()
+        self.session = Session.new(self.cfg.model, self.cfg.workdir)
         self.refresh_status()
         return f"Working directory: {p}"
 

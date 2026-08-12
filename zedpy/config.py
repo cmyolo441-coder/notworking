@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+from urllib.parse import urlparse
 
 # --- Built-in defaults ---
 # API key: prefer environment variable; fallback is a placeholder (not a real key).
@@ -30,7 +32,7 @@ DEFAULT_BASE_URL = os.environ.get(
 DEFAULT_MODEL = "mimo-v2.5-free"
 DEFAULT_MAX_STEPS = 80
 DEFAULT_MAX_TOKENS = 1000000
-DEFAULT_TIMEOUT = 4000
+DEFAULT_TIMEOUT = 300
 
 # Cloudflare Workers AI defaults
 CF_ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID", "")
@@ -131,6 +133,30 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
 }
 
 
+def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def _valid_base_url(value: str) -> str:
+    candidate = (value or "").strip()
+    parsed = urlparse(candidate)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return DEFAULT_BASE_URL
+    return candidate.rstrip("/")
+
+
 @dataclass
 class Config:
     api_key: str = DEFAULT_API_KEY
@@ -138,6 +164,7 @@ class Config:
     model: str = DEFAULT_MODEL
     max_steps: int = DEFAULT_MAX_STEPS
     max_tokens: int = DEFAULT_MAX_TOKENS
+    temperature: float = 0.2
     timeout: int = DEFAULT_TIMEOUT
     workdir: str = ""
     auto_approve: bool = False
@@ -155,43 +182,51 @@ class Config:
 
     @classmethod
     def load(cls) -> "Config":
-        """Env vars overlay defaults."""
+        """Load environment overrides with validation and safe bounds."""
         auto_approve = os.getenv("ZEDPY_AUTO_APPROVE", "").lower() in ("true", "1", "yes")
-        effort = os.getenv("ZEDPY_EFFORT", "normal")
-        workdir = os.getenv("ZEDPY_WORKDIR", "") or os.getcwd()
+        effort = os.getenv("ZEDPY_EFFORT", "normal").strip().lower() or "normal"
+        requested_workdir = Path(os.getenv("ZEDPY_WORKDIR", "") or os.getcwd()).expanduser()
+        try:
+            workdir_path = requested_workdir.resolve(strict=True)
+            if not workdir_path.is_dir():
+                raise ValueError("not a directory")
+        except (OSError, ValueError):
+            workdir_path = Path.cwd().resolve()
 
-        # Resolve API key: env var > config file > default
-        api_key = os.getenv("ZEDPY_API_KEY", "") or os.getenv("OPENCODE_API_KEY", "") or DEFAULT_API_KEY
-
-        # Try to read from config file if still empty
+        # Resolve API key: environment first, then a local key file. Never log it.
+        api_key = os.getenv("ZEDPY_API_KEY", "").strip() or os.getenv("OPENCODE_API_KEY", "").strip() or DEFAULT_API_KEY
         if not api_key:
             config_paths = [
-                os.path.join(workdir, ".zedpy", "api_key"),
-                os.path.expanduser("~/.config/zedpy/api_key"),
-                os.path.expanduser("~/.zedpy/api_key"),
+                workdir_path / ".zedpy" / "api_key",
+                Path.home() / ".config" / "zedpy" / "api_key",
+                Path.home() / ".zedpy_api_key",
             ]
-            for path in config_paths:
-                if os.path.exists(path):
-                    try:
-                        with open(path, 'r') as f:
-                            api_key = f.read().strip()
-                            if api_key:
-                                break
-                    except Exception:
-                        pass
+            for key_path in config_paths:
+                try:
+                    if key_path.is_file() and (key_path.stat().st_mode & 0o077) == 0:
+                        candidate = key_path.read_text(encoding="utf-8").strip()
+                        if candidate:
+                            api_key = candidate
+                            break
+                except OSError:
+                    continue
 
+        base_url = _valid_base_url(os.getenv("ZEDPY_BASE_URL", DEFAULT_BASE_URL))
         return cls(
             api_key=api_key,
-            base_url=os.getenv("ZEDPY_BASE_URL", DEFAULT_BASE_URL),
-            model=os.getenv("ZEDPY_MODEL", DEFAULT_MODEL),
-            max_steps=int(os.getenv("ZEDPY_MAX_STEPS", str(DEFAULT_MAX_STEPS))),
-            max_tokens=int(os.getenv("ZEDPY_MAX_TOKENS", str(DEFAULT_MAX_TOKENS))),
-            timeout=int(os.getenv("ZEDPY_TIMEOUT", str(DEFAULT_TIMEOUT))),
-            workdir=os.path.abspath(workdir),
+            base_url=base_url,
+            model=os.getenv("ZEDPY_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
+            max_steps=_env_int("ZEDPY_MAX_STEPS", DEFAULT_MAX_STEPS, 1, 500),
+            max_tokens=_env_int("ZEDPY_MAX_TOKENS", DEFAULT_MAX_TOKENS, 256, 2_000_000),
+            temperature=_env_float("ZEDPY_TEMPERATURE", 0.2, 0.0, 2.0),
+            timeout=_env_int("ZEDPY_TIMEOUT", DEFAULT_TIMEOUT, 5, 3_600),
+            workdir=str(workdir_path),
             auto_approve=auto_approve,
             effort=effort,
-            context_window_limit=int(os.getenv("ZEDPY_CONTEXT_LIMIT", "200000")),
-            debug_mode=os.getenv("ZEDPY_DEBUG", "").lower() in ("true", "1"),
+            context_window_limit=_env_int("ZEDPY_CONTEXT_LIMIT", 200_000, 1_024, 2_000_000),
+            max_concurrent_tools=_env_int("ZEDPY_MAX_CONCURRENT_TOOLS", 5, 1, 32),
+            debug_mode=os.getenv("ZEDPY_DEBUG", "").lower() in ("true", "1", "yes"),
+            yolo_mode=auto_approve,
         )
 
     def apply_profile(self, name: str) -> bool:
@@ -201,12 +236,13 @@ class Config:
         NVIDIA profiles auto-set the NVIDIA API key.
         OpenCode profiles use the OPENCODE_API_KEY.
         """
-        profile = MODEL_PROFILES.get(name.lower())
-        if profile is None:
+        profile = MODEL_PROFILES.get((name or "").lower())
+        if profile is None or not profile.base_url:
             return False
         self.model = profile.model
         self.base_url = profile.base_url
         self.max_tokens = profile.max_tokens
+        self.temperature = max(0.0, min(float(profile.temperature), 2.0))
         # Auto-switch API key based on provider.
         if "cloudflare.com" in profile.base_url:
             self.api_key = CF_API_KEY

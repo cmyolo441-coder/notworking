@@ -13,12 +13,12 @@ class LedgerUpdate(Tool):
     name = "ledger_update"
     requires_approval = False
     description = (
-        "Update the Dream task ledger (the never-stop engine's milestone list).\n"
+        "Update the Dream task ledger (the bounded, resumable engine's milestone list).\n"
         "  action='list' — show pending milestones.\n"
         "  action='done' — mark a milestone complete (item_id required). Mark done "
         "ONLY when that milestone's REAL working code exists and its tests pass.\n"
         "  action='add'  — add a new milestone (description required).\n"
-        "The loop keeps working until every milestone is done AND verification "
+        "The run continues within its hard cap until every milestone is done AND verification "
         "passes twice — so keep this ledger accurate as you finish real work."
     )
 

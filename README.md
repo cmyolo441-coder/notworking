@@ -8,25 +8,42 @@ Ye actually:
 - ✏️ files **edit / write / append** karta hai
 - 🖥️ **shell commands** chalata hai
 - 🔍 codebase **search** karta hai (grep, find_files)
-- 🌙 **Dream Ultra Mode** — 19K-40K files tak end-to-end autonomous development
+- 🌙 **Dream Mode** — bounded, resumable autonomous development with verification gates
+- 🌐 **Real-time web search** — live public search, citations, page fetch और SSRF protection
+- 📊 **Live telemetry** — input/output token usage, streamed estimates, latency, tool steps और web references
 
 ...ek **ReAct loop** me, OpenAI-compatible LLM (`mimo-v2.5-free` @ opencode zen) ke saath.
 
-> ✅ **Verified working** with the real LLM:
-> - `test_real.py` → 4/4 pass (read, edit disk-verify, shell, write+run)
-> - `test_tui.py`  → 3/3 pass (startup UI, slash command, agent file edit through the TUI)
+> ✅ **Locally verified** without requiring an API key:
+> - `test_18features.py` → 19/19 feature checks plus TUI interaction checks
+> - `test_advanced.py` → 10/10 advanced features
+> - `test_dream.py` → 17/17 dream/goal/streaming checks
+> - `test_effort.py` → 15/15 effort checks
+> - `test_ledger.py` → 22/22 ledger checks
+> - `test_palette.py` → grouped palette, hidden tool commands, live filtering, Tab/Esc checks
+>
+> `test_real.py` and the TUI live-edit path require a configured provider API key.
 
 ---
 
-## 🆕 v2.0.0 — What's New
+## 🆕 v2.1.0 — What's New
 
-### 🌙 Enterprise Dream Ultra Mode (Never-Stop)
-- **50,000 steps** (was 600) — 19K-40K file projects ke liye
-- **5,000 continuations** (was 25) — jab tak kaam complete na ho tab tak nahi rukta
-- **Never stops mid-work** — agent actively tool calls kar raha ho to kabhi nahi rokta
+### 🌙 Dream Mode — Bounded Autonomous Development
+- **1,000 bounded steps** per autonomous run, with **80 continuations** available across resumable runs
+- **Stall detection** stops a run after 12 rounds without measurable progress
+- **Safe autonomy** — long jobs remain resumable instead of running without a hard ceiling
 - **All file types tracked** — `.py .json .md .yaml .toml .html .css` sab changes detect
 - **Parallel preflight** — metrics + security + deps ek saath chalte hain (3x faster startup)
 - **Cached fake-scan** — repeated codebase walks eliminate (60s TTL cache)
+
+### 🛡️ Reliability & Security Hardening
+- Path jail rejects `..` traversal and symlink escapes for file tools.
+- Text writes are UTF-8, size-bounded, atomic, and preserve existing permissions.
+- Shell and git output is bounded; destructive git/helper overrides are rejected.
+- LLM cache is thread-safe, tool-aware, TTL-bound, and returns defensive copies.
+- Provider requests validate URLs, cap retries/timeouts, and handle malformed responses.
+- TUI mutating tools require approval by default, and worker threads shut down cleanly.
+- Session saves report errors instead of silently dropping state.
 
 ### 🐛 Bug Fixes
 - Streaming retry loop — fresh headers har retry par (stale headers bug fix)
@@ -38,8 +55,18 @@ Ye actually:
 - TUI `_finish` — dream mode verification section display fix
 
 ### ✨ New Commands
+- `/web <query>` — live public web search with numbered citations
+- `/fetch <url>` — safely fetch a public page after SSRF validation
+- `/cost` — live input/output tokens, estimates, requests, tools and latency
 - `/stats` — LLM cache hit rate + token usage
 - `/clear-cache` — LLM response cache clear karo
+
+These technical commands remain available when explicitly typed, but they are intentionally **not shown in the default `/` palette**. The palette is reserved for controls that change the workspace or execution state: model, mode, workdir, effort, Dream/Goal modes, approvals, sessions, checkpoints, undo/redo, help, and settings.
+
+### Natural-Language-First TUI
+Type a normal request such as “find why the tests fail and verify the fix” or “research the current API and update this client.” BITTU's system policy allows the agent to choose real `web_search`, page fetch, file, shell, git, lint, and test tools when the task requires them; `/web` and `/fetch` are compatibility escape hatches, not prerequisites for research.
+
+Typing `/` opens a grouped command palette. The list updates live as the prefix is typed, and `PgUp`/`PgDown` move the highlight, while `Enter` or `Tab` inserts the selected command and `Esc` closes the palette. Input/output tokens, live streamed estimates, request latency, current tool step, tool count, and web-reference count stay in the background telemetry strip rather than appearing as separate primary commands.
 
 ---
 
@@ -165,7 +192,7 @@ bittu --workdir /path/to/project
 
 ---
 
-## 🌙 Dream Mode ULTRA PRO — Enterprise Never-Stop
+## 🌙 Dream Mode ULTRA PRO — Enterprise Bounded Autonomy
 
 ```bash
 # Basic Dream Mode
@@ -174,15 +201,15 @@ bittu --workdir /path/to/project
 # Fast Dream Mode (auto model selection)
 /dream-fast <your goal>
 
-# Ultra Dream Mode (maximum power — NEVER stops until done)
+# Ultra Dream Mode (maximum bounded autonomy with verification)
 /dream-ultra <your goal>
 ```
 
-### Enterprise Scale:
-- Ek baar `/dream-ultra` select karo aur bolo "mujhe 19000 files develop karne hain"
-- BITTU **tab tak nahi rukta** jab tak EVERY file end-to-end complete na ho
-- Auto-accept ON — koi permission nahi maangta
-- 50,000 steps, 5,000 continuations — unlimited-style operation
+### Long-Running Work:
+- `/dream-ultra` selects the strongest bounded effort profile.
+- Each run has a hard step ceiling and a stall detector.
+- Work is checkpointed and resumable instead of running without limits.
+- Mutating actions still follow the configured approval policy unless explicitly overridden.
 
 ### 15 Parallel Analysis Engines (Control Plane):
 1. Deep AST Analysis — cyclomatic + cognitive complexity
@@ -201,11 +228,11 @@ bittu --workdir /path/to/project
 14. Documentation — docstring coverage
 15. Fake/Simulated Code — stubs, NotImplementedError, fake returns
 
-### Never-Stop Logic:
+### Bounded Autonomy Logic:
 ```
-Agent actively calling tools? → NEVER STOP (keep going)
-Files changed since last check? → NEVER STOP (reset stall counter)
-Stall for 25+ checks with no progress? → Stop (real stall)
+Agent actively calling tools? → Continue within the hard step cap
+Files changed since last check? → Reset the stall counter
+Stall for 12 checks with no progress? → Stop and report
 All verified (no fakes, no errors, tests pass)? → Done ✓
 ```
 
@@ -243,13 +270,13 @@ All verified (no fakes, no errors, tests pass)? → Done ✓
 | **`ultra`** | 50× | 140 | **Most complex work** — deep research + parallel swarm + security scan + CI-grade verify. |
 | **`ultracombomax`** | 120× | 300 | **Full enterprise-level** — auto-checkpoint + all gates + exhaustive verification. |
 | **`goal`** | 300× | 400 | **Fully autonomous end-to-end** — auto-accept, goal contract, milestones, all gates. |
-| **`dream`** 🌙 | **1000×** | **50,000** | **ENTERPRISE NEVER-STOP — 19K-40K files, jab tak done na ho tab tak nahi rukta.** |
+| `dream` 🌙 | **1000×** | **1,000 hard-capped** | **Deep bounded autonomy — checkpointed, resumable, verification-gated and stall-aware.** |
 
 ```bash
 /max /ultra /ultracombomax     # thinking levels
 /goal <goal text>              # autonomous end-to-end
 /dream <goal text>             # 1000× — orchestrate everything
-/dream-ultra <goal text>       # maximum power, never stops
+/dream-ultra <goal text>       # deepest bounded mode with verification + checkpoints
 /effort <name>                 # set by name
 ```
 
@@ -293,6 +320,9 @@ All verified (no fakes, no errors, tests pass)? → Done ✓
 | 18 | **Export conversation** | `/export md\|html` |
 | 19 | **LLM cache stats** | `/stats` |
 | 20 | **Clear LLM cache** | `/clear-cache` |
+| 21 | **Live web search** | `/web`, `web_search` |
+| 22 | **Public page fetch** | `/fetch`, `web_search(fetch)` |
+| 23 | **Live token telemetry** | `/cost`, TUI telemetry strip |
 
 ---
 
@@ -315,7 +345,7 @@ All verified (no fakes, no errors, tests pass)? → Done ✓
 | `/sessions` `/resume` | Saved sessions list / resume |
 | `/search` `/index` | Semantic file search / rebuild index |
 | `/memory` | Remembered facts dikhao |
-| `/cost` | Token usage |
+| `/cost` | Live input/output token usage, estimates, requests, tools and latency |
 | `/stats` | LLM cache hit rate + token stats |
 | `/clear-cache` | LLM response cache clear |
 | `/git` | Git command chalao |
@@ -333,9 +363,9 @@ All verified (no fakes, no errors, tests pass)? → Done ✓
 | `/effort` | Effort level show/set |
 | `/max` `/ultra` `/ultracombomax` | Thinking levels |
 | `/goal` | Autonomous end-to-end goal |
-| `/dream` | 1000× — orchestrate EVERYTHING |
-| `/dream-fast` | Dream + auto fast model |
-| `/dream-ultra` | Dream ULTRA PRO — enterprise never-stop |
+| `/dream` | 1000× bounded orchestration with verification gates |
+| `/dream-fast` | Dream with automatic fast-model selection |
+| `/dream-ultra` | Dream ULTRA PRO — deepest bounded, checkpointed and verification-gated mode |
 | `/quit` | Exit BITTU |
 
 ---
@@ -376,8 +406,8 @@ zedpy/
 ├── zedpy/
 │   ├── __main__.py         # entry: TUI (default) ya plain REPL
 │   ├── config.py           # model, base_url, api_key, model profiles
-│   ├── agent.py            # ReAct loop — enterprise never-stop dream engine
-│   ├── commands.py         # 34 slash commands
+│   ├── agent.py            # ReAct loop — bounded, resumable Dream engine
+│   ├── commands.py         # full slash registry + focused grouped palette
 │   ├── systemprompts.py    # all system prompts centralized
 │   ├── llm/
 │   │   ├── client.py       # LRU cache + retry + exponential backoff
@@ -398,6 +428,7 @@ zedpy/
 │   └── tools/              # 27 tools: files/shell/git/search/analyze/web/memory/...
 ├── test_real.py
 ├── test_tui.py
+├── test_palette.py         # grouped palette + keyboard UX regression checks
 ├── test_dream.py
 ├── test_effort.py
 └── README.md

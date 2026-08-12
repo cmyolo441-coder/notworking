@@ -50,7 +50,7 @@ TOOLS = [
     DataTool(),         # #14
     RegexReplace(),     # #15
     Tree(),             # #16
-    LedgerUpdate(),     # Dream Mode never-stop task ledger
+    LedgerUpdate(),     # Dream Mode bounded, resumable task ledger
 ]
 
 REGISTRY = {t.name: t for t in TOOLS}

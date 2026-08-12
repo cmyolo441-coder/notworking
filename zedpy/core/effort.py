@@ -175,7 +175,9 @@ _GOAL = Effort(
 
 _DREAM = Effort(
     name="dream", label="Dream Mode", multiplier=1000,
-    max_steps=50_000, max_tokens=1_000_000, temperature=0.02,
+    # Per-turn ceiling is enforced by Agent.DREAM_HARD_CAP; keep the profile
+    # truthful so `/effort` never advertises an unbounded 50K-step run.
+    max_steps=1_000, max_tokens=1_000_000, temperature=0.02,
     description=EFFORT_DREAM_DESC,
     **_base_flags(plan=True, verify=True, research=True, diagnostic=True,
                   retries=30, parallel=True, swarm=True, swarmsize=12,

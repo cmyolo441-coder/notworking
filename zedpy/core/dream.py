@@ -12,18 +12,18 @@ CONTROL PLANE (before agent acts):
   7. Security analysis — hardcoded secrets, dangerous functions, input validation
   8. Performance analysis — N+1 queries, memory leaks, inefficient loops
   9. Full project checkpoint — snapshot with file hashes
- 10. Parallel analyzers — 8 concurrent analysis engines
- 11. Coordinated swarm — 12 specialized sub-agents for deep research
- 12. Milestone executor — DAG-based plan with parallel execution support
+ 10. Bounded parallel analyzers — concurrent analysis with time and result limits
+ 11. Coordinated research — provider-aware web/file research, never instruction execution
+ 12. Milestone executor — resumable plan with explicit progress tracking
 
-AGENT EXECUTES (auto-accept + all gates)
+AGENT EXECUTES (approval-aware; autonomous only when the selected profile permits it)
 
 VERIFICATION PLANE (after agent finishes):
   1. Incremental verification — lint + secret_scan + tests per change
   2. Parallel verification — quality + security + metrics concurrent
   3. Regression detection — before/after metric comparison with thresholds
   4. Code diff analysis — what changed, why, impact assessment
-  5. Self-healing — auto-retry failures up to 100 times
+  5. Self-healing — bounded retries with cancellation and checkpoint support
   6. Evidence pack — cryptographic hash chain with timestamps
   7. Work journal — decisions, risks, next steps
   8. Final report — comprehensive summary with all metrics
@@ -1812,8 +1812,9 @@ def _fake_code_detection(workdir: str, path: str = ".") -> str:
     """Detect fake / simulated / placeholder code across the tree.
 
     Blocking-severity findings (empty stubs, NotImplementedError, fake returns,
-    simulated sleeps) are what gate Dream Mode completion. TODO/FIXME markers
-    are reported as low severity so they don't block the never-stop loop.
+    simulated sleeps) gate Dream Mode completion. TODO/FIXME markers are reported
+    as low severity. The agent remains resumable and bounded; a hard cap or stall
+    guard returns a truthful blocker report instead of claiming infinite progress.
     """
     from ..tools.base import walk_files
     root = Path(workdir).resolve()

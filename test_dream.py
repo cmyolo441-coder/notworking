@@ -26,7 +26,7 @@ def main() -> int:
     # 1. Levels exist and escalate to 1000×.
     g, d = ee.get("goal"), ee.get("dream")
     check("goal level: 300× / 400 steps", g.multiplier == 300 and g.max_steps == 400)
-    check("dream level: 1000× / never-stop ceiling", d.multiplier == 1000 and d.max_steps >= 600)
+    check("dream level: 1000× / bounded execution ceiling", d.multiplier == 1000 and d.max_steps >= 600)
     check("dream > all: max multiplier", d.multiplier == max(e.multiplier for e in ee.CATALOG.values()))
 
     # 2. Dream/goal behavioral switches — REAL.

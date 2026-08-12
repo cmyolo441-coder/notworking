@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 
 from .config import Config
 from .core import effort as effort_engine
@@ -46,22 +47,24 @@ POST_TOOL_REMINDER = (
     "If you see errors, fix them before continuing."
 )
 
-# === DREAM MODE — never-stop autonomous loop ===
+# === DREAM MODE — bounded autonomous loop ===
 # The loop keeps going (auto-continuing) until a REAL completion check passes,
 # bounded so it can never run or cost forever:
 #   - DREAM_HARD_CAP        : absolute ceiling on loop steps in dream mode.
 #   - DREAM_CONTINUATION_CAP : max auto-continuations after the model stops.
 #   - stall detection        : stop if no measurable progress for N rounds.
-DREAM_HARD_CAP = 50_000     # was 1000 — 19K-40K files ka kaam khatam karne ke liye
-DREAM_CONTINUATION_CAP = 5_000  # was 80 — jab tak kaam complete na ho tab tak nahi rukna
-DREAM_STALL_LIMIT = 25      # was 8 — real stall detect karne ke liye zyada patience
+# Bounded autonomous execution: large jobs should be resumed in explicit turns,
+# never allowed to run away indefinitely in a single provider session.
+DREAM_HARD_CAP = 1_000
+DREAM_CONTINUATION_CAP = 80
+DREAM_STALL_LIMIT = 12
 DREAM_FAKE_CACHE_TTL = 60.0 # seconds: reuse fake-scan result if mtime unchanged
 DREAM_CONTINUATION_PROMPT = (
-    "[DREAM — ENTERPRISE NEVER-STOP] The goal is NOT complete yet. "
-    "You MUST keep working until EVERY file, feature, and requirement is "
-    "fully implemented end-to-end. Do NOT stop, do NOT summarize, do NOT "
-    "declare done. Keep calling tools and writing real code. "
-    "Reason to continue: "
+    "[DREAM — ENTERPRISE CONTINUATION] The goal is not verified complete yet. "
+    "Continue with real tool calls while respecting the configured step cap, "
+    "cancellation, retry budget, checkpoints and approval policy. Do not claim "
+    "completion without evidence; if blocked, report the blocker and preserve "
+    "resume state. Reason to continue: "
 )
 
 
@@ -74,7 +77,7 @@ class Agent:
         self.history: list[dict] = [{"role": "system", "content": self._system()}]
         self._auto_context_done = False
         self._debug_fails = 0
-        # Dream never-stop loop state.
+        # Dream bounded-loop state.
         self._dream_continuations = 0
         self._dream_stall = 0
         self._dream_last_state: tuple | None = None
@@ -84,6 +87,13 @@ class Agent:
         self._ledger: dict | None = None
         self.total_input_tokens = 0
         self.total_output_tokens = 0
+        self.total_requests = 0
+        self.total_tool_calls = 0
+        self.last_latency_ms = 0.0
+        self.current_step = 0
+        self._live_output_chars = 0
+        self._live_input_estimate = 0
+        self._telemetry_lock = threading.RLock()
         self.cancel_event = threading.Event()
         # Context window tracking
         self._approx_tokens = 0
@@ -100,6 +110,9 @@ class Agent:
     def set_effort(self, name: str) -> str:
         """Switch effort level at runtime; rebuild system prompt."""
         self.effort = effort_engine.get(name)
+        # Keep the provider request aligned with the selected execution mode.
+        self.cfg.max_tokens = max(256, min(int(self.effort.max_tokens), 2_000_000))
+        self.cfg.temperature = max(0.0, min(float(self.effort.temperature), 2.0))
         self.rebuild_system()
         return (f"Effort -> {self.effort.label} "
                 f"({self.effort.multiplier}x . {self.effort.max_steps} steps)")
@@ -263,11 +276,17 @@ class Agent:
     # --- main loop ---
     def run(self, user_input: str, on_text=None) -> str:
         """Process one message. on_text(delta) enables streaming."""
+        started_at = time.monotonic()
+        with self._telemetry_lock:
+            self.total_requests += 1
+            self.current_step = 0
+            self._live_output_chars = 0
+            self._live_input_estimate = max(0, len(str(self.history)) // 4)
         self._append_history("user", user_input)
         self._inject_context(user_input)
         self.cancel_event.clear()
         self._debug_fails = 0
-        # Reset dream never-stop loop state each turn.
+        # Reset bounded, resumable Dream loop state each turn.
         self._dream_continuations = 0
         self._dream_stall = 0
         self._dream_last_state = None
@@ -300,7 +319,7 @@ class Agent:
                     "user",
                     "[DREAM LEDGER] Mark each milestone done via the "
                     "ledger_update tool ONLY when its REAL code exists and its "
-                    "tests pass. The loop will NOT stop while any are pending:\n"
+                    "tests pass. Pending milestones trigger bounded continuation:\n"
                     + ledger.pending_summary(self._ledger, limit=40))
             except Exception:
                 self._ledger = None
@@ -315,18 +334,28 @@ class Agent:
         # Max steps from effort level
         max_steps = max(self.cfg.max_steps,
                         getattr(self.effort, "max_steps", 80))
-        # Dream mode: raise the loop ceiling so the never-stop loop has room,
-        # while keeping the effort dataclass value (600) intact for callers.
+        # Dream mode: honor the profile budget while enforcing the global hard cap,
+        # keeping each run resumable and bounded.
         if getattr(self.effort, "dream_mode", False):
-            max_steps = max(max_steps, DREAM_HARD_CAP)
+            # The profile may advertise a large theoretical budget, but the
+            # per-process hard cap must always win to keep execution resumable.
+            max_steps = min(max(max_steps, 1), DREAM_HARD_CAP)
 
         for step in range(max_steps):
+            with self._telemetry_lock:
+                self.current_step = step + 1
             if self.cancel_event.is_set():
+                self._finish_telemetry(started_at)
                 return "Stopped by user (Esc)."
 
             # Streaming or non-streaming LLM call
             if on_text is not None:
-                msg = stream_chat(self.cfg, self.history, SCHEMAS, on_text,
+                def _on_stream_delta(delta: str) -> None:
+                    if delta:
+                        with self._telemetry_lock:
+                            self._live_output_chars += len(delta)
+                    on_text(delta)
+                msg = stream_chat(self.cfg, self.history, SCHEMAS, _on_stream_delta,
                                   cancel_event=self.cancel_event)
             else:
                 msg = self.llm.chat(self.history, tools=SCHEMAS)
@@ -344,8 +373,8 @@ class Agent:
                 if self._check_tool_usage_compliance(msg):
                     continue  # Re-loop with compliance reminder injected
                 answer = msg.get("content") or "(no response)"
-                # DREAM MODE never-stop: don't finalize until the goal is
-                # verifiably complete (real check), bounded by cap + stall.
+                # DREAM MODE: don't finalize until the goal is verifiably
+                # complete, or a hard cap/stall/provider blocker requires a report.
                 if (getattr(self.effort, "dream_mode", False)
                         and not self.cancel_event.is_set()):
                     done, reason = self._dream_completion_check()
@@ -355,14 +384,19 @@ class Agent:
                         self._append_history("user",
                                              DREAM_CONTINUATION_PROMPT + reason)
                         continue
-                return self._finalize(answer)
+                answer = self._finalize(answer)
+                self._finish_telemetry(started_at)
+                return answer
 
             # Execute tool calls
             for call in tool_calls:
                 if self.cancel_event.is_set():
+                    self._finish_telemetry(started_at)
                     return "Stopped by user (Esc)."
                 result = self._execute_tool(call)
                 self._tool_call_count += 1
+                with self._telemetry_lock:
+                    self.total_tool_calls += 1
                 self._append_history(
                     "tool",
                     content=result,
@@ -395,7 +429,13 @@ class Agent:
             if getattr(self.effort, "self_healing", False):
                 self._self_heal_check()
 
+        self._finish_telemetry(started_at)
         return "Max steps reached."
+
+    def _finish_telemetry(self, started_at: float) -> None:
+        with self._telemetry_lock:
+            self.last_latency_ms = max(0.0, (time.monotonic() - started_at) * 1000.0)
+            self.current_step = 0
 
     def _execute_tool(self, call: dict) -> str:
         """Execute a single tool call with approval + error handling."""
@@ -447,7 +487,7 @@ class Agent:
                 pass
         return answer
 
-    # --- dream never-stop completion check ---
+    # --- bounded Dream completion check ---
     def _workdir_mtime_state(self) -> tuple:
         """Cheap fingerprint of the tree so we can detect 'nothing changed'.
 
@@ -481,8 +521,8 @@ class Agent:
     def _dream_completion_check(self) -> tuple[bool, str]:
         """Decide if the dream goal is verifiably done.
 
-        Enterprise-scale: designed for 19K-40K file projects.
-        NEVER stops mid-work — only stops when ALL of these are true:
+        Enterprise-scale: works in bounded batches for large projects.
+        It stops when the goal is verified, cancelled, blocked, stalled, or capped:
           1. Zero blocking fake/stub findings
           2. Zero recent tool errors
           3. Tests pass (if any exist)
@@ -491,7 +531,7 @@ class Agent:
         Stall guard: only triggers after DREAM_STALL_LIMIT consecutive checks
         with ZERO tool activity AND identical measurable state.
         """
-        # 1. mtime check — if files changed, agent is still working, never stop.
+        # 1. mtime check — if files changed, progress was made; reset the stall guard.
         mtime_state = self._workdir_mtime_state()
         files_changed = (
             self._dream_mtime_snapshot is not None
@@ -503,7 +543,7 @@ class Agent:
             self._dream_last_state = None
         self._dream_mtime_snapshot = mtime_state
 
-        # 2. Count recent tool calls — if agent is actively calling tools, never stop.
+        # 2. Count recent tool calls — active work resets the stall guard.
         recent_tool_calls = sum(
             1 for m in self.history[-20:]
             if m.get("role") == "tool"
@@ -889,12 +929,22 @@ class Agent:
     # --- token tracking ---
     def _track(self, msg: dict) -> None:
         u = msg.get("_usage") or {}
-        self.total_input_tokens += u.get("prompt_tokens", 0)
-        self.total_output_tokens += u.get("completion_tokens", 0)
+        with self._telemetry_lock:
+            self.total_input_tokens += int(u.get("prompt_tokens", 0) or 0)
+            self.total_output_tokens += int(u.get("completion_tokens", 0) or 0)
 
     def stats(self) -> dict:
-        return {
-            "input_tokens": self.total_input_tokens,
-            "output_tokens": self.total_output_tokens,
-            "messages": len(self.history),
-        }
+        with self._telemetry_lock:
+            live_output_tokens = max(0, self._live_output_chars // 4)
+            return {
+                "input_tokens": self.total_input_tokens,
+                "output_tokens": self.total_output_tokens,
+                "live_input_tokens": self._live_input_estimate,
+                "live_output_tokens": live_output_tokens,
+                "total_tokens": self.total_input_tokens + self.total_output_tokens,
+                "messages": len(self.history),
+                "requests": self.total_requests,
+                "tool_calls": self.total_tool_calls,
+                "current_step": self.current_step,
+                "latency_ms": round(self.last_latency_ms, 1),
+            }

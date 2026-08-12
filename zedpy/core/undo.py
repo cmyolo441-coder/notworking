@@ -1,18 +1,15 @@
-"""Feature 3 — Undo/Redo system for file changes.
-
-Har mutating tool (write/edit/append) change se pehle ek snapshot leta hai.
-UndoManager in snapshots ko stack me rakhta hai; /undo aur /redo se revert hota hai.
-"""
+"""Thread-safe undo/redo snapshots for project file mutations."""
 from __future__ import annotations
 
 import os
+import threading
 from dataclasses import dataclass
 
 
 @dataclass
 class Snapshot:
     path: str
-    before: str | None  # None = file pehle exist nahi karti thi
+    before: str | None
     after: str | None
     tool: str
 
@@ -21,48 +18,68 @@ class UndoManager:
     def __init__(self, max_depth: int = 100):
         self._undo: list[Snapshot] = []
         self._redo: list[Snapshot] = []
-        self.max_depth = max_depth
+        self.max_depth = max(1, max_depth)
+        self._lock = threading.RLock()
+        self._pending = threading.local()
+
+    @staticmethod
+    def _read(path: str) -> str | None:
+        if not os.path.exists(path):
+            return None
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            return handle.read()
 
     def capture(self, path: str, tool: str) -> None:
-        """Change se PEHLE call karo (before-content record hota hai)."""
-        before = None
-        if os.path.exists(path):
-            try:
-                before = open(path, encoding="utf-8", errors="replace").read()
-            except Exception:
-                before = None
-        self._pending = Snapshot(path=path, before=before, after=None, tool=tool)
+        """Capture the before-state; commit must be called after the mutation."""
+        try:
+            before = self._read(path)
+        except OSError:
+            before = None
+        self._pending.snapshot = Snapshot(path=path, before=before, after=None, tool=tool)
 
     def commit(self) -> None:
-        """Change ke BAAD call karo (after-content record + stack me push)."""
-        snap = getattr(self, "_pending", None)
+        snap = getattr(self._pending, "snapshot", None)
         if snap is None:
             return
         try:
-            snap.after = open(snap.path, encoding="utf-8", errors="replace").read() \
-                if os.path.exists(snap.path) else None
-        except Exception:
+            snap.after = self._read(snap.path)
+        except OSError:
             snap.after = None
-        self._undo.append(snap)
-        if len(self._undo) > self.max_depth:
-            self._undo.pop(0)
-        self._redo.clear()
-        self._pending = None
+        with self._lock:
+            self._undo.append(snap)
+            if len(self._undo) > self.max_depth:
+                del self._undo[: len(self._undo) - self.max_depth]
+            self._redo.clear()
+        self._pending.snapshot = None
 
     def undo(self) -> str:
-        if not self._undo:
-            return "Nothing to undo."
-        snap = self._undo.pop()
-        self._restore(snap, to_before=True)
-        self._redo.append(snap)
+        with self._lock:
+            if not self._undo:
+                return "Nothing to undo."
+            snap = self._undo.pop()
+        try:
+            self._restore(snap, to_before=True)
+        except OSError as exc:
+            with self._lock:
+                self._undo.append(snap)
+            return f"Error: undo failed: {exc}"
+        with self._lock:
+            self._redo.append(snap)
         return f"Undid change to {os.path.basename(snap.path)} ({snap.tool})"
 
     def redo(self) -> str:
-        if not self._redo:
-            return "Nothing to redo."
-        snap = self._redo.pop()
-        self._restore(snap, to_before=False)
-        self._undo.append(snap)
+        with self._lock:
+            if not self._redo:
+                return "Nothing to redo."
+            snap = self._redo.pop()
+        try:
+            self._restore(snap, to_before=False)
+        except OSError as exc:
+            with self._lock:
+                self._redo.append(snap)
+            return f"Error: redo failed: {exc}"
+        with self._lock:
+            self._undo.append(snap)
         return f"Redid change to {os.path.basename(snap.path)} ({snap.tool})"
 
     @staticmethod
@@ -71,15 +88,18 @@ class UndoManager:
         if content is None:
             if os.path.exists(snap.path):
                 os.remove(snap.path)
-        else:
-            os.makedirs(os.path.dirname(snap.path) or ".", exist_ok=True)
-            with open(snap.path, "w", encoding="utf-8") as f:
-                f.write(content)
+            return
+        os.makedirs(os.path.dirname(snap.path) or ".", exist_ok=True)
+        with open(snap.path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(content)
 
     def history(self) -> list[str]:
-        return [f"{i+1}. {s.tool} {os.path.basename(s.path)}"
-                for i, s in enumerate(self._undo)]
+        with self._lock:
+            return [
+                f"{i + 1}. {snapshot.tool} {os.path.basename(snapshot.path)}"
+                for i, snapshot in enumerate(self._undo)
+            ]
 
 
-# Global instance jo tools use karte hain.
+# Shared manager used by file tools and slash commands.
 MANAGER = UndoManager()

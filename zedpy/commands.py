@@ -15,6 +15,8 @@ class SlashCommand:
     name: str          # e.g. "/help"  (leading slash included)
     summary: str       # short one-line description shown in the dropdown
     handler: Callable  # fn(app, arg_str) -> str  (return text to show, or "")
+    category: str = "General"
+    palette: bool = True
 
 
 # --- Handlers ---------------------------------------------------------------
@@ -198,15 +200,43 @@ def _index(app, arg: str) -> str:  # F2
     return f"Indexed {stats['files']} files, {stats['terms']} unique terms."
 
 
+def _web(app, arg: str) -> str:
+    """Search the live public web without confusing it with local /search."""
+    query = arg.strip()
+    if not query:
+        return "Usage: /web <live web query>"
+    from .tools import REGISTRY as TR
+    return TR["web_search"].run(app.cfg.workdir, query=query, max_results=8, timeout=app.cfg.timeout)
+
+
+def _fetch(app, arg: str) -> str:
+    """Fetch readable text from one public URL."""
+    url = arg.strip()
+    if not url:
+        return "Usage: /fetch <public http(s) URL>"
+    from .tools import REGISTRY as TR
+    return TR["web_search"].run(app.cfg.workdir, fetch=url, timeout=app.cfg.timeout)
+
+
 def _memory(app, arg: str) -> str:  # F10
     from .core.memory import MEMORY
     return MEMORY.recall(arg.strip())
 
 
 def _cost(app, arg: str) -> str:  # F7
+    """Show live request, token, tool and latency telemetry."""
     s = app.agent.stats()
-    return (f"Tokens — input: {s['input_tokens']}  output: {s['output_tokens']}\n"
-            f"Messages in context: {s['messages']}")
+    total = int(s.get("total_tokens", 0) or 0)
+    live_in = int(s.get("live_input_tokens", 0) or 0)
+    live = int(s.get("live_output_tokens", 0) or 0)
+    return (f"Tokens — input: {int(s.get('input_tokens', 0)):,}  "
+            f"output: {int(s.get('output_tokens', 0)):,}  total: {total:,}\n"
+            f"Live estimate: {live_in:,} input + {live:,} output tokens  |  "
+            f"Requests: {int(s.get('requests', 0))}  |  "
+            f"Tools: {int(s.get('tool_calls', 0))}\n"
+            f"Current step: {int(s.get('current_step', 0))}  |  "
+            f"Last latency: {float(s.get('latency_ms', 0.0)):.1f} ms\n"
+            f"Messages in context: {s.get('messages', 0)}")
 
 
 def _git(app, arg: str) -> str:  # F5
@@ -346,126 +376,76 @@ def _dream(app, arg: str) -> str:
         app.log_user(f"/dream {arg.strip()}")
         app._run_agent_async(arg.strip())
         return ""
-    return ("🌙 DREAM MODE ON — 1000× maximum autonomy. Har tool, feature aur "
-            "command orchestrate hoga, auto-accept ON, full verification + evidence. "
-            "Ab apna goal type karo (ya: /dream <goal text>).")
+    return ("DREAM MODE ON — 1000× orchestration profile with deep verification, "
+            "live telemetry, checkpoints and bounded continuation. Mutating tools "
+            "follow the current approval/YOLO setting. Goal type karo (ya: /dream <goal text>).")
+
+
+def _rebuild_agent(app) -> None:
+    """Rebuild the agent after changing provider or execution settings."""
+    from .agent import Agent
+    app.agent = Agent(app.cfg)
+    if hasattr(app, "_wire_agent_callbacks"):
+        app._wire_agent_callbacks()
 
 
 def _dream_fast(app, arg: str) -> str:
-    """Dream Mode with auto fast model selection for quick responses."""
+    """Dream with the fastest configured compatible model."""
     from .config import MODEL_PROFILES
     from .core.dream import get_dream_fast_model
 
-    # Set dream effort
-    app.agent.set_effort("dream")
     app.cfg.effort = "dream"
-
-    # Auto-select fastest model using apply_profile
     fast_model = get_dream_fast_model()
     if fast_model in MODEL_PROFILES:
         app.cfg.apply_profile(fast_model)
-
-    # Rebuild agent with new settings
-    if hasattr(app, 'agent'):
-        from .agent import Agent
-        app.agent = Agent(app.cfg)
-
+    app.cfg.effort = "dream"
+    _rebuild_agent(app)
     app.refresh_status()
 
     if arg.strip():
         app.log_user(f"/dream-fast {arg.strip()}")
         app._run_agent_async(arg.strip())
         return ""
-
-    return (f"🚀 DREAM MODE ULTRA PRO — Fast Model Active!\n"
-            f"Model: {app.cfg.model}\n"
-            f"Max Tokens: {app.cfg.max_tokens}\n"
-            f"Effort: 1000× Dream Mode\n\n"
-            f"14 parallel analysis engines ready:\n"
-            f"  - Deep AST Analysis\n"
-            f"  - Dependency Graph\n"
-            f"  - Security Analysis\n"
-            f"  - Performance Analysis\n"
-            f"  - Code Quality Baseline\n"
-            f"  - Architecture Brain\n"
-            f"  - Risk Heatmap\n"
-            f"  - Change Impact\n"
-            f"  - Dead Code Detection\n"
-            f"  - Type Hints Analysis\n"
-            f"  - Code Smells\n"
-            f"  - API Surface\n"
-            f"  - Test Coverage\n"
-            f"  - Documentation\n\n"
-            f"Type your goal to start DREAM MODE ULTRA PRO!")
+    return (
+        "DREAM-FAST ready\n"
+        f"Model: {app.cfg.model}\n"
+        f"Bounded steps: {min(app.cfg.max_steps, 1000)}\n"
+        "Behavior: fast model selection with real tools and resumable limits\n"
+        "Live web search: available via web_search and /web\n"
+        "Use /dream-fast <goal> to start."
+    )
 
 
 def _dream_ultra(app, arg: str) -> str:
-    """Dream Mode ULTRA PRO with maximum analysis and verification."""
+    """Deep Dream profile with research, quality gates and resumable evidence."""
     from .config import MODEL_PROFILES
     from .core.dream import get_dream_fast_model
 
-    # Set dream effort with maximum settings
-    app.agent.set_effort("dream")
     app.cfg.effort = "dream"
-
-    # Use best available model using apply_profile
-    fast_model = get_dream_fast_model()
-    if fast_model in MODEL_PROFILES:
-        app.cfg.apply_profile(fast_model)
-
-    # Enable all advanced features including auto-approve (dream mode requires it)
-    app.cfg.plan_mode = False   # Dream mode handles planning internally
+    best_model = get_dream_fast_model()
+    if best_model in MODEL_PROFILES:
+        app.cfg.apply_profile(best_model)
+    app.cfg.effort = "dream"
+    # Ultra enables real verification features but does not silently turn on
+    # destructive auto-approval. Existing explicit YOLO preference is retained.
+    app.cfg.plan_mode = True
     app.cfg.auto_test = True
-    app.cfg.auto_approve = True  # Dream mode is fully autonomous
-
-    # Rebuild agent with new settings
-    if hasattr(app, 'agent'):
-        from .agent import Agent
-        app.agent = Agent(app.cfg)
-        app.agent.rebuild_system()
-
+    _rebuild_agent(app)
     app.refresh_status()
 
     if arg.strip():
         app.log_user(f"/dream-ultra {arg.strip()}")
         app._run_agent_async(arg.strip())
         return ""
-
-    return (f"🔥 DREAM MODE ULTRA PRO — Maximum Power!\n"
-            f"Model: {app.cfg.model}\n"
-            f"Max Tokens: {app.cfg.max_tokens}\n"
-            f"Effort: 1000× Dream Mode\n"
-            f"Plan Mode: ON\n"
-            f"Auto-Test: ON\n\n"
-            f"14 parallel analysis engines + 12 swarm agents:\n"
-            f"  - Deep AST Analysis (complexity metrics)\n"
-            f"  - Dependency Graph (circular detection)\n"
-            f"  - Security Analysis (vulnerability scan)\n"
-            f"  - Performance Analysis (inefficiency detection)\n"
-            f"  - Code Quality Baseline (maintainability index)\n"
-            f"  - Architecture Brain (coupling analysis)\n"
-            f"  - Risk Heatmap (quantified risk scores)\n"
-            f"  - Change Impact (blast radius)\n"
-            f"  - Dead Code Detection\n"
-            f"  - Type Hints Analysis\n"
-            f"  - Code Smells Detection\n"
-            f"  - API Surface Analysis\n"
-            f"  - Test Coverage Analysis\n"
-            f"  - Documentation Analysis\n\n"
-            f"12 swarm agents for deep research:\n"
-            f"  - Project structure analysis\n"
-            f"  - Milestone breakdown\n"
-            f"  - Risk identification\n"
-            f"  - Dependency mapping\n"
-            f"  - Conflict detection\n"
-            f"  - Implementation optimization\n"
-            f"  - Complexity estimation\n"
-            f"  - Rollback strategy\n"
-            f"  - Pattern review\n"
-            f"  - Security validation\n"
-            f"  - Verification planning\n"
-            f"  - Success criteria\n\n"
-            f"Type your goal to start DREAM MODE ULTRA PRO!")
+    return (
+        "DREAM-ULTRA ready\n"
+        f"Model: {app.cfg.model}\n"
+        f"Bounded steps: {min(app.cfg.max_steps, 1000)}\n"
+        "Enabled: planning, live web research, checkpointing, auto-tests, "
+        "quality/security gates, double verification and live telemetry\n"
+        "Safety: mutating tools require approval unless /yolo is explicitly enabled\n"
+        "Use /dream-ultra <goal> to start; resume large work with /resume last."
+    )
 
 
 def _stats(app, arg: str) -> str:
@@ -479,6 +459,9 @@ def _stats(app, arg: str) -> str:
         f"  Output tokens: {agent_stats['output_tokens']}\n"
         f"  Total tokens : {agent_stats['input_tokens'] + agent_stats['output_tokens']}\n"
         f"  Messages     : {agent_stats['messages']}\n"
+        f"  Requests     : {agent_stats.get('requests', 0)}\n"
+        f"  Tool calls   : {agent_stats.get('tool_calls', 0)}\n"
+        f"  Last latency : {agent_stats.get('latency_ms', 0.0)} ms\n"
         f"\nLLM Cache:\n"
         f"  Hits  : {cache['hits']}\n"
         f"  Misses: {cache['misses']}\n"
@@ -511,6 +494,8 @@ COMMANDS: list[SlashCommand] = [
     SlashCommand("/sessions", "List saved sessions",                 _sessions),
     SlashCommand("/resume",   "Resume a session (<id> | last)",      _resume),
     SlashCommand("/search",   "Semantic file search",                _search),
+    SlashCommand("/web",      "Search the live public web",           _web),
+    SlashCommand("/fetch",    "Read a public web page",               _fetch),
     SlashCommand("/index",    "Rebuild the codebase index",          _index),
     SlashCommand("/memory",   "Show remembered facts",               _memory),
     SlashCommand("/cost",     "Show token/cost usage",               _cost),
@@ -534,7 +519,7 @@ COMMANDS: list[SlashCommand] = [
     SlashCommand("/ultra",          "Ultra thinking — complex work", _ultra),
     SlashCommand("/ultracombomax",  "Enterprise-level heavy work",   _ultracombomax),
     SlashCommand("/goal",           "Autonomous end-to-end goal",    _goal),
-    SlashCommand("/dream",          "1000× — orchestrate EVERYTHING", _dream),
+    SlashCommand("/dream",          "Deep orchestration with bounded continuation", _dream),
     SlashCommand("/dream-fast",     "Dream Mode + auto fast model",  _dream_fast),
     SlashCommand("/dream-ultra",    "Dream Mode ULTRA PRO",          _dream_ultra),
     SlashCommand("/stats",          "LLM cache + token stats",       _stats),
@@ -544,8 +529,56 @@ COMMANDS: list[SlashCommand] = [
 
 REGISTRY = {c.name: c for c in COMMANDS}
 
+# The registry intentionally contains expert and compatibility commands so that
+# they remain available when explicitly typed.  The palette is a product UX,
+# not a dump of every internal capability: keep it focused on controls users
+# change while working.  Ordering here is the visual order in the palette.
+_PALETTE_LAYOUT: tuple[tuple[str, str], ...] = (
+    ("/model", "WORKSPACE"),
+    ("/mode", "WORKSPACE"),
+    ("/cwd", "WORKSPACE"),
+    ("/effort", "EXECUTION"),
+    ("/max", "EXECUTION"),
+    ("/ultra", "EXECUTION"),
+    ("/ultracombomax", "EXECUTION"),
+    ("/goal", "EXECUTION"),
+    ("/dream", "EXECUTION"),
+    ("/dream-fast", "EXECUTION"),
+    ("/dream-ultra", "EXECUTION"),
+    ("/yolo", "EXECUTION"),
+    ("/sessions", "HISTORY"),
+    ("/resume", "HISTORY"),
+    ("/checkpoint", "HISTORY"),
+    ("/checkpoints", "HISTORY"),
+    ("/restore", "HISTORY"),
+    ("/undo", "HISTORY"),
+    ("/redo", "HISTORY"),
+    ("/clear", "HISTORY"),
+    ("/help", "SETTINGS"),
+    ("/config", "SETTINGS"),
+    ("/setkey", "SETTINGS"),
+    ("/quit", "SETTINGS"),
+)
 
-def match(prefix: str) -> list[SlashCommand]:
-    """Return commands whose name starts with `prefix` (for autocomplete)."""
+_PALETTE_CATEGORIES = dict(_PALETTE_LAYOUT)
+_PALETTE_BY_NAME = {c.name: c for c in COMMANDS}
+for _name, _category in _PALETTE_LAYOUT:
+    if _name in _PALETTE_BY_NAME:
+        _PALETTE_BY_NAME[_name].category = _category
+
+PALETTE_COMMANDS: list[SlashCommand] = [
+    _PALETTE_BY_NAME[name] for name, _ in _PALETTE_LAYOUT
+    if name in _PALETTE_BY_NAME and _PALETTE_BY_NAME[name].palette
+]
+
+
+def match(prefix: str, *, palette: bool = False) -> list[SlashCommand]:
+    """Return commands matching a typed prefix.
+
+    ``palette=False`` preserves the full registry for explicit command
+    dispatch.  The TUI passes ``palette=True`` so hidden technical commands
+    such as ``/web`` and ``/cost`` do not clutter the dropdown.
+    """
     p = prefix.strip().lower()
-    return [c for c in COMMANDS if c.name.startswith(p)]
+    source = PALETTE_COMMANDS if palette else COMMANDS
+    return [c for c in source if c.name.startswith(p)]
