@@ -709,7 +709,14 @@ class BittuApp(App):
     def action_stop(self) -> None:
         if self.busy:
             self.agent.cancel_event.set()
-            self.log_system("⏹ Stopping… (Esc/Ctrl+C)")
+            self.log_system("⏹ Stopping… (cancellation requested)")
+            # Double-Esc force reset: if pressed again within 2s, force UI unblock.
+            now = time.monotonic()
+            if hasattr(self, "_stop_req_at") and (now - self._stop_req_at) < 2.0:
+                self.busy = False
+                self.log_system("⏹ Force-cleared UI busy state.")
+            self._stop_req_at = now
+            self.refresh_status()
         else:
             # Model selector khula ho to band karo.
             if self._model_selector_active:
@@ -833,8 +840,9 @@ class BittuApp(App):
                 answer = f"[LLM error] {e}"
             except Exception as e:  # noqa
                 answer = f"[error] {e}"
-            if not self._closing:
-                self.call_from_thread(self._finish, answer)
+            finally:
+                if not self._closing:
+                    self.call_from_thread(self._finish, answer)
 
         self._worker_thread = threading.Thread(target=worker, name="bittu-agent", daemon=True)
         self._worker_thread.start()

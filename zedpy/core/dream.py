@@ -47,8 +47,9 @@ from ..systemprompts import DREAM_ULTRA_PRO_HEADER
 
 def get_dream_fast_model() -> str:
     """Get the fastest available model for Dream Mode."""
-    # Priority order for speed
-    fast_models = ["dream-fast", "dream-pro", "mimo", "fast"]
+    # Priority order for quality + flash speed. dream-pro (DeepSeek-V4-Flash)
+    # is the target for high-end autonomous work.
+    fast_models = ["dream-pro", "dream-fast", "mimo", "fast"]
     for name in fast_models:
         if name in MODEL_PROFILES:
             return name

@@ -392,12 +392,9 @@ def _rebuild_agent(app) -> None:
 def _dream_fast(app, arg: str) -> str:
     """Dream with the fastest configured compatible model."""
     from .config import MODEL_PROFILES
-    from .core.dream import get_dream_fast_model
 
-    app.cfg.effort = "dream"
-    fast_model = get_dream_fast_model()
-    if fast_model in MODEL_PROFILES:
-        app.cfg.apply_profile(fast_model)
+    # Fast mode uses the lightest model (Mimo) for rapid iterations.
+    app.cfg.apply_profile("dream-fast")
     app.cfg.effort = "dream"
     _rebuild_agent(app)
     app.refresh_status()
@@ -419,12 +416,10 @@ def _dream_fast(app, arg: str) -> str:
 def _dream_ultra(app, arg: str) -> str:
     """Deep Dream profile with research, quality gates and resumable evidence."""
     from .config import MODEL_PROFILES
-    from .core.dream import get_dream_fast_model
 
-    app.cfg.effort = "dream"
-    best_model = get_dream_fast_model()
-    if best_model in MODEL_PROFILES:
-        app.cfg.apply_profile(best_model)
+    # Use the 'pro' profile (DeepSeek-V4-Flash) for Ultra mode to ensure high quality
+    # with fast flash-speed responses.
+    app.cfg.apply_profile("dream-pro")
     app.cfg.effort = "dream"
     # Ultra enables real verification features but does not silently turn on
     # destructive auto-approval. Existing explicit YOLO preference is retained.

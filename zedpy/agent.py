@@ -315,12 +315,15 @@ class Agent:
                 from .core import ledger
                 self._ledger = ledger.resume_or_create(
                     self.cfg.workdir, user_input, self.cfg)
-                self._append_history(
-                    "user",
+                ledger_prompt = (
                     "[DREAM LEDGER] Mark each milestone done via the "
                     "ledger_update tool ONLY when its REAL code exists and its "
                     "tests pass. Pending milestones trigger bounded continuation:\n"
-                    + ledger.pending_summary(self._ledger, limit=40))
+                    + ledger.pending_summary(self._ledger, limit=40)
+                )
+                # We append to history AND inject it into the next prompt to ensure
+                # the agent acts on it immediately in the first turn.
+                self._append_history("user", ledger_prompt)
             except Exception:
                 self._ledger = None
         # GOAL MODE: inject execution contract
@@ -377,13 +380,19 @@ class Agent:
                 # complete, or a hard cap/stall/provider blocker requires a report.
                 if (getattr(self.effort, "dream_mode", False)
                         and not self.cancel_event.is_set()):
+                    # Immediate check before expensive completion checks
+                    if self.cancel_event.is_set():
+                        self._finish_telemetry(started_at)
+                        return "Stopped by user (Esc)."
+
                     done, reason = self._dream_completion_check()
-                    if (not done
-                            and self._dream_continuations < DREAM_CONTINUATION_CAP):
+                    if (not done and self._dream_continuations < DREAM_CONTINUATION_CAP):
                         self._dream_continuations += 1
-                        self._append_history("user",
-                                             DREAM_CONTINUATION_PROMPT + reason)
+                        self._append_history("user", DREAM_CONTINUATION_PROMPT + reason)
                         continue
+                if self.cancel_event.is_set():
+                    self._finish_telemetry(started_at)
+                    return "Stopped by user (Esc)."
                 answer = self._finalize(answer)
                 self._finish_telemetry(started_at)
                 return answer
@@ -411,10 +420,16 @@ class Agent:
 
             # Auto-test after file changes
             if self.cfg.auto_test and self._changed_files(tool_calls):
+                if self.cancel_event.is_set():
+                    self._finish_telemetry(started_at)
+                    return "Stopped by user (Esc)."
                 self._run_auto_test()
 
             # Effort gates: quality/security checks after changes
             if self._changed_files(tool_calls):
+                if self.cancel_event.is_set():
+                    self._finish_telemetry(started_at)
+                    return "Stopped by user (Esc)."
                 self._effort_gates()
                 # A new edit invalidates any prior clean verification pass, so
                 # the two required passes must be genuinely consecutive.
@@ -430,6 +445,11 @@ class Agent:
                 self._self_heal_check()
 
         self._finish_telemetry(started_at)
+        if getattr(self.effort, "dream_mode", False):
+            if self._dream_continuations >= DREAM_CONTINUATION_CAP:
+                return self._finalize("Dream Mode reached continuation limit (80 rounds). Work is checkpointed; resume with /resume.")
+            if self._dream_stall >= DREAM_STALL_LIMIT:
+                return self._finalize("Dream Mode stalled (no measurable progress). Check logs and resume.")
         return "Max steps reached."
 
     def _finish_telemetry(self, started_at: float) -> None:
